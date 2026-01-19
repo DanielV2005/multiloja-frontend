@@ -1,0 +1,29 @@
+/* src/theme.scss */
+@use '@angular/material' as mat;
+
+/* Habilita tipografia, ripple etc. */
+@include mat.core();
+
+/* Tema claro (M3) sem paletas Sass específicas */
+:root {
+  @include mat.theme((
+    color: (theme-type: light),
+    density: 0
+  ));
+
+  /* Ajuste fino da “cor primária” via tokens M3 (seu ouro) */
+  --mat-sys-primary: #D4AF37;
+}
+
+/* Tema escuro (M3) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    @include mat.theme((
+      color: (theme-type: dark),
+      density: 0
+    ));
+
+    /* Ouro no dark */
+    --mat-sys-primary: #DAAB1F;
+  }
+}

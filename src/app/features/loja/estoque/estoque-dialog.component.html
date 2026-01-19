@@ -1,0 +1,114 @@
+<!-- src/app/features/loja/estoque/estoque-dialog.component.html -->
+<div class="dialog-card">
+  <header class="dialog-header">
+    <div class="avatar">
+      <span class="material-symbols-outlined">inventory_2</span>
+    </div>
+    <div>
+      <h2>Estoque</h2>
+      <p class="subtitle">Produtos cadastrados na loja</p>
+    </div>
+  </header>
+
+  <section class="dialog-body">
+    <!-- carregando -->
+    <div *ngIf="loading" class="loading">
+      <div class="spinner"></div>
+      <span>Carregando produtos...</span>
+    </div>
+
+    <!-- vazio -->
+    <p *ngIf="!loading && produtos.length === 0" class="empty">
+      Nenhum produto cadastrado ainda.
+    </p>
+
+    <!-- tabela -->
+    <div *ngIf="!loading && produtos.length > 0" class="table-wrapper">
+      <div class="table-header">
+        <span>Produto</span>
+        <span class="cell-numeric">Qtd.</span>
+        <span class="cell-numeric">Preço custo</span>
+        <span class="cell-numeric">Preço venda</span>
+        <span class="cell-numeric">Margem</span>
+        <span>Setor</span>
+      </div>
+
+      <div
+        class="table-row"
+        *ngFor="let p of produtos; trackBy: trackById"
+      >
+        <!-- Produto -->
+        <span class="cell-name">
+          {{ p.nome }}
+        </span>
+
+        <!-- Quantidade -->
+        <span class="cell-numeric">
+          {{ p.quantidade }}
+        </span>
+
+        <!-- Preço custo -->
+        <span class="cell-numeric">
+          {{ p.precoCusto | currency:'BRL':'symbol-narrow':'1.2-2':'pt-BR' }}
+        </span>
+
+        <!-- Preço venda -->
+        <span class="cell-numeric">
+          {{ p.precoVenda | currency:'BRL':'symbol-narrow':'1.2-2':'pt-BR' }}
+        </span>
+
+        <!-- Margem -->
+        <span class="cell-numeric">
+          {{ p.margemLucro | number:'1.0-2':'pt-BR' }} %
+        </span>
+
+        <!-- Setor + ações -->
+        <div class="cell-setor">
+          <span class="setor-name">
+            {{ nomeSetor(p) }}
+          </span>
+
+          <span class="row-actions">
+            <button
+              type="button"
+              class="icon-btn"
+              title="Editar produto"
+              (click)="editarProduto(p)"
+            >
+              <span class="material-symbols-outlined">edit</span>
+            </button>
+
+            <button
+              type="button"
+              class="icon-btn"
+              title="Desativar produto"
+              (click)="desativarProduto(p)"
+            >
+              <span class="material-symbols-outlined">delete</span>
+            </button>
+
+            <button
+              type="button"
+              class="icon-btn"
+              title="Reativar produto"
+              (click)="reativarProduto(p)"
+              [disabled]="p.ativo === true"
+            >
+              <span class="material-symbols-outlined">history</span>
+            </button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="actions">
+    <button type="button" class="btn btn-outline" (click)="closeDialog()">
+      Fechar
+    </button>
+
+    <button type="button" class="btn btn-gold" (click)="adicionarProduto()">
+      Adicionar produto
+    </button>
+  </footer>
+</div>
