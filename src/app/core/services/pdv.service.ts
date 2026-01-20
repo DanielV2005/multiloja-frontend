@@ -2,6 +2,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 export type SaleStatus = 'Open' | 'Completed' | 'Cancelled';
 
@@ -45,7 +46,7 @@ export interface AddPaymentRequest {
 
 @Injectable({ providedIn: 'root' })
 export class PdvService {
-  private readonly api = '/api/Sales';
+  private readonly api = `${environment.apiBase.pdv}/api/Sales`;
 
   constructor(private http: HttpClient) {}
 

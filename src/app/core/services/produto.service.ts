@@ -2,6 +2,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 /**
  * Produto retornado pelos endpoints de listagem
@@ -47,7 +48,7 @@ export interface SalvarProdutoRequest {
 
 @Injectable({ providedIn: 'root' })
 export class ProdutoService {
-  private readonly api = '/api/Produtos';
+  private readonly api = `${environment.apiBase.catalogo}/api/Produtos`;
 
   constructor(private http: HttpClient) {}
 

@@ -2,6 +2,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 export interface Setor {
   id: number;
@@ -20,7 +21,7 @@ export interface NovoSetor {
 @Injectable({ providedIn: 'root' })
 export class SetorService {
   private http = inject(HttpClient);
-  private baseUrl = '/api/Setores';
+  private baseUrl = `${environment.apiBase.organizacao}/api/Setores`;
 
   /** Lista setores ATIVOS */
   listar(filtro: string = ''): Observable<Setor[]> {

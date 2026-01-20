@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, map, tap } from 'rxjs';
 import { AuthStorageService } from './auth-storage.service';
+import { environment } from '../../../environments/environment';
 
 export interface Loja {
   id: number;
@@ -28,7 +29,8 @@ export interface LoginResponse {
 
 @Injectable({ providedIn: 'root' })
 export class UsuarioService {
-  private readonly api = '/api';
+  private readonly identityApi = `${environment.apiBase.identity}/api`;
+  private readonly organizacaoApi = `${environment.apiBase.organizacao}/api`;
 
   constructor(
     private http: HttpClient,
@@ -40,7 +42,7 @@ export class UsuarioService {
   /** Faz login e já salva o token no AuthStorageService */
   login(payload: LoginRequest): Observable<LoginResponse> {
     return this.http
-      .post<LoginResponse>(`${this.api}/Usuario/login`, payload)
+      .post<LoginResponse>(`${this.identityApi}/Usuario/login`, payload)
       .pipe(
         tap(res => {
           if (res?.token) {
@@ -51,7 +53,7 @@ export class UsuarioService {
   }
 
   trocarSenha(senhaAtual: string, novaSenha: string): Observable<void> {
-    return this.http.post<void>(`${this.api}/Usuario/trocar-senha`, {
+    return this.http.post<void>(`${this.identityApi}/Usuario/trocar-senha`, {
       senhaAtual,
       novaSenha,
     });
@@ -75,7 +77,7 @@ export class UsuarioService {
 
   minhasLojas(): Observable<Loja[]> {
     return this.http
-      .get<any[]>(`${this.api}/Usuario/minhas-lojas`)
+      .get<any[]>(`${this.identityApi}/Usuario/minhas-lojas`)
       .pipe(
         map(arr => (Array.isArray(arr) ? arr : [])),
         map(arr => arr.map(this.normalizeLoja)),
@@ -85,13 +87,13 @@ export class UsuarioService {
 
   loja(id: number): Observable<Loja> {
     return this.http
-      .get<any>(`${this.api}/Lojas/${id}`)
+      .get<any>(`${this.organizacaoApi}/Lojas/${id}`)
       .pipe(map(this.normalizeLoja));
   }
 
   criarLoja(dto: NovaLoja): Observable<number> {
     return this.http
-      .post(`${this.api}/Lojas`, dto, { observe: 'response' })
+      .post(`${this.organizacaoApi}/Lojas`, dto, { observe: 'response' })
       .pipe(
         map(res => {
           if (typeof res.body === 'number') return res.body as number;
@@ -106,20 +108,20 @@ export class UsuarioService {
   }
 
   atualizarLoja(id: number, dto: NovaLoja): Observable<void> {
-    return this.http.put<void>(`${this.api}/Lojas/${id}`, dto);
+    return this.http.put<void>(`${this.organizacaoApi}/Lojas/${id}`, dto);
   }
 
   desativarLoja(id: number): Observable<void> {
-    return this.http.post<void>(`${this.api}/Lojas/${id}/desativar`, {});
+    return this.http.post<void>(`${this.organizacaoApi}/Lojas/${id}/desativar`, {});
   }
 
   reativarLoja(id: number): Observable<void> {
-    return this.http.post<void>(`${this.api}/Lojas/${id}/reativar`, {});
+    return this.http.post<void>(`${this.organizacaoApi}/Lojas/${id}/reativar`, {});
   }
 
   lojasDesativadas(): Observable<Loja[]> {
     return this.http
-      .get<any[]>(`${this.api}/Lojas/desativadas`)
+      .get<any[]>(`${this.organizacaoApi}/Lojas/desativadas`)
       .pipe(
         map(arr => (Array.isArray(arr) ? arr : [])),
         map(arr => arr.map(this.normalizeLoja))
@@ -130,7 +132,7 @@ export class UsuarioService {
   selecionarLoja(id: number): Observable<void> {
     return this.http
       .post(
-        `${this.api}/Usuario/selecionar-loja`,
+        `${this.identityApi}/Usuario/selecionar-loja`,
         { lojaId: id },
         { responseType: 'text' }
       )
