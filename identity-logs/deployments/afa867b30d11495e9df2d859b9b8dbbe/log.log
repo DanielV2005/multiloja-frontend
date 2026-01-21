@@ -1,0 +1,70 @@
+2026-01-20T21:36:21.6925777Z,Updating submodules.,f2000572-245f-47c8-adc1-d438e32ef63d,0
+2026-01-20T21:36:21.8019647Z,Preparing deployment for commit id 'afa867b30d'.,e01fcb34-1dc8-4052-adb0-978d4e91317d,0
+2026-01-20T21:36:21.9269668Z,Running build. Project type: OneDeploy,605a75cf-ac43-4919-bbc9-ea625c50ccda,0
+2026-01-20T21:36:21.9738374Z,Copying the manifest,a907ff39-284b-461f-a95f-cf6345e0168a,0
+2026-01-20T21:36:22.0209014Z,Clean deploying to C:\home\site\wwwroot,9b5daf38-7454-48d3-85b1-c030cafb86a3,0
+2026-01-20T21:36:22.0676012Z,Generating deployment script.,087238a0-3e52-4f47-82e6-ca0222a0814a,0
+	2026-01-20T21:36:22.1300976Z,Using the following command to generate deployment script: 'azure site deploymentscript -y --no-dot-deployment -r "C:\local\Temp\zipdeploy\extracted" -o "C:\home\site\deployments\tools" --basic --sitePath "C:\local\Temp\zipdeploy\extracted"'.,,0
+	2026-01-20T21:36:22.3176081Z,Generating deployment script for Web Site,,0
+	2026-01-20T21:36:22.3332339Z,Generated deployment script files,,0
+2026-01-20T21:36:22.4113598Z,Running deployment command...,78b3226c-8f53-439a-a66c-4e1a8d2f5669,0
+	2026-01-20T21:36:22.4269849Z,Command: "C:\home\site\deployments\tools\deploy.cmd",,0
+	2026-01-20T21:36:22.5676246Z,Handling Basic Web Site deployment.,,0
+	2026-01-20T21:36:22.7863790Z,Creating app_offline.htm,,0
+	2026-01-20T21:36:22.8176293Z,KuduSync.NET from: 'C:\local\Temp\zipdeploy\extracted' to: 'C:\home\site\wwwroot',,0
+	2026-01-20T21:36:22.8332591Z,Deleting file: 'hostingstart.html',,0
+	2026-01-20T21:36:22.8488805Z,Copying file: 'appsettings.Development.json',,0
+	2026-01-20T21:36:22.8645077Z,Copying file: 'appsettings.json',,0
+	2026-01-20T21:36:22.8801362Z,Copying file: 'BCrypt.Net-Next.dll',,0
+	2026-01-20T21:36:22.8957622Z,Copying file: 'EFCore.NamingConventions.dll',,0
+	2026-01-20T21:36:22.9113827Z,Copying file: 'FluentValidation.AspNetCore.dll',,0
+	2026-01-20T21:36:22.9426355Z,Copying file: 'FluentValidation.DependencyInjectionExtensions.dll',,0
+	2026-01-20T21:36:22.9582671Z,Copying file: 'FluentValidation.dll',,0
+	2026-01-20T21:36:22.9738862Z,Copying file: 'Identity.Application.dll',,0
+	2026-01-20T21:36:22.9895253Z,Copying file: 'Identity.Application.pdb',,0
+	2026-01-20T21:36:23.0051411Z,Copying file: 'Identity.Domain.dll',,0
+	2026-01-20T21:36:23.0208177Z,Copying file: 'Identity.Domain.pdb',,0
+	2026-01-20T21:36:23.0363949Z,Copying file: 'Identity.Infrastructure.dll',,0
+	2026-01-20T21:36:23.0676420Z,Copying file: 'Identity.Infrastructure.pdb',,0
+	2026-01-20T21:36:23.0832669Z,Copying file: 'Microsoft.AspNetCore.Authentication.JwtBearer.dll',,0
+	2026-01-20T21:36:23.0988923Z,Copying file: 'Microsoft.AspNetCore.Cryptography.Internal.dll',,0
+	2026-01-20T21:36:23.1145185Z,Copying file: 'Microsoft.AspNetCore.Cryptography.KeyDerivation.dll',,0
+	2026-01-20T21:36:23.1457693Z,Copying file: 'Microsoft.EntityFrameworkCore.Abstractions.dll',,0
+	2026-01-20T21:36:23.1457693Z,Copying file: 'Microsoft.EntityFrameworkCore.dll',,0
+	2026-01-20T21:36:23.1614051Z,Copying file: 'Microsoft.EntityFrameworkCore.Relational.dll',,0
+	2026-01-20T21:36:23.1926479Z,Copying file: 'Microsoft.Extensions.Caching.Abstractions.dll',,0
+	2026-01-20T21:36:23.2082722Z,Copying file: 'Microsoft.Extensions.Caching.Memory.dll',,0
+	2026-01-20T21:36:23.2238977Z,Copying file: 'Microsoft.Extensions.Configuration.Abstractions.dll',,0
+	2026-01-20T21:36:23.2395285Z,Copying file: 'Microsoft.Extensions.DependencyInjection.Abstractions.dll',,0
+	2026-01-20T21:36:23.2551569Z,Copying file: 'Microsoft.Extensions.DependencyInjection.dll',,0
+	2026-01-20T21:36:23.2707764Z,Copying file: 'Microsoft.Extensions.Identity.Core.dll',,0
+	2026-01-20T21:36:23.2864014Z,Copying file: 'Microsoft.Extensions.Logging.Abstractions.dll',,0
+	2026-01-20T21:36:23.3020267Z,Copying file: 'Microsoft.Extensions.Logging.dll',,0
+	2026-01-20T21:36:23.3176522Z,Copying file: 'Microsoft.Extensions.Options.dll',,0
+	2026-01-20T21:36:23.3332784Z,Copying file: 'Microsoft.Extensions.Primitives.dll',,0
+	2026-01-20T21:36:23.3489042Z,Copying file: 'Microsoft.IdentityModel.Abstractions.dll',,0
+	2026-01-20T21:36:23.3645299Z,Copying file: 'Microsoft.IdentityModel.JsonWebTokens.dll',,0
+	2026-01-20T21:36:23.3801575Z,Copying file: 'Microsoft.IdentityModel.Logging.dll',,0
+	2026-01-20T21:36:23.3957812Z,Copying file: 'Microsoft.IdentityModel.Protocols.dll',,0
+	2026-01-20T21:36:23.4114072Z,Copying file: 'Microsoft.IdentityModel.Protocols.OpenIdConnect.dll',,0
+	2026-01-20T21:36:23.4426586Z,Copying file: 'Microsoft.IdentityModel.Tokens.dll',,0
+	2026-01-20T21:36:23.4582845Z,Copying file: 'Microsoft.OpenApi.dll',,0
+	2026-01-20T21:36:23.4739105Z,Copying file: 'Multiloja.Api.deps.json',,0
+	2026-01-20T21:36:23.4895356Z,Copying file: 'Multiloja.Api.dll',,0
+	2026-01-20T21:36:23.5051615Z,Copying file: 'Multiloja.Api.exe',,0
+	2026-01-20T21:36:23.5207939Z,Copying file: 'Multiloja.Api.pdb',,0
+	2026-01-20T21:36:23.5364129Z,Copying file: 'Multiloja.Api.runtimeconfig.json',,0
+	2026-01-20T21:36:23.5676646Z,Copying file: 'Multiloja.Api.staticwebassets.endpoints.json',,0
+	2026-01-20T21:36:23.5832899Z,Copying file: 'Npgsql.dll',,0
+	2026-01-20T21:36:23.5989154Z,Copying file: 'Npgsql.EntityFrameworkCore.PostgreSQL.dll',,0
+	2026-01-20T21:36:23.6145436Z,Copying file: 'Swashbuckle.AspNetCore.Swagger.dll',,0
+	2026-01-20T21:36:23.6301727Z,Copying file: 'Swashbuckle.AspNetCore.SwaggerGen.dll',,0
+	2026-01-20T21:36:23.6457926Z,Copying file: 'Swashbuckle.AspNetCore.SwaggerUI.dll',,0
+	2026-01-20T21:36:23.6614183Z,Omitting next output lines...,,0
+	2026-01-20T21:36:23.6770449Z,Finished successfully.,,0
+2026-01-20T21:36:23.7239280Z,Build completed succesfully.,48ad5930-a6be-414e-bc3d-12b1fcd4179e,0
+2026-01-20T21:36:23.7707988Z,Running post deployment command(s)...,8a6ce007-de95-4089-90c7-f9287798519d,0
+2026-01-20T21:36:23.8176760Z,Requesting site restart,ad62d817-5eab-4f66-814e-8fa09b356fbd,0
+2026-01-20T21:36:23.8801791Z,Requesting site restart. Attempt #1,e80692fe-c8a5-4f5c-8107-ef521ef3ac31,0
+2026-01-20T21:36:24.2395716Z,Successfully requested a restart. Attempt #1,90dcbca9-6ccb-407b-8396-4c3be23432e0,0
+2026-01-20T21:36:24.2874520Z,Deployment successful.,ee7ca96e-21b2-4ed7-b48c-d47f11dbb542,0

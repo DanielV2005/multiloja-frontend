@@ -1,0 +1,6 @@
+<step title="Incoming Request" date="2026-01-21T02:05:49.469" instance="a6e48b" url="/logstream" method="GET" type="request" pid="17452,2,10" Accept-Encoding="identity" Authorization="Bea..." Host="multiloja-identity-api-br-gua5c6e0fafdbbb3.scm.brazilsouth-01.azurewebsites.net" User-Agent="AZURECLI/2.80.0 (MSI)" x-ms-client-request-id="adcd30c6-f66d-11f0-99fc-bceca0e6ff7c" X-ARR-LOG-ID="adcd30c6-f66d-11f0-99fc-bceca0e6ff7c" CLIENT-IP="177.128.177.206:8202" X-SITE-DEPLOYMENT-ID="multiloja-identity-api-br" WAS-DEFAULT-HOSTNAME="multiloja-identity-api-br-gua5c6e0fafdbbb3.scm.brazilsouth-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/logstream" >
+  <step title="Cleanup Xml Logs" date="2026-01-21T02:05:49.484" /><!-- duration: 0ms -->
+  <step title="LogStreamHandler.BeginProcessRequest" date="2026-01-21T02:05:49.500" >
+    <step title="LockFile &apos;C:\home\site\locks\hooks.lock&apos; acquired" date="2026-01-21T02:05:49.547" /><!-- duration: 0ms -->
+    <step title="LockFile &apos;C:\home\site\locks\hooks.lock&apos; released" date="2026-01-21T02:05:49.563" /><!-- duration: 0ms -->
+  </step><!-- duration: 78ms -->
