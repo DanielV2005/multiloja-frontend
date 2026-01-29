@@ -1159,7 +1159,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   adicionarItem(item: ItemVendavelDto, fromBarcode: boolean = false): void {
     if (!this.currentSale) {
       if (this.isDraftActive()) {
-        this.addItemToDraft(item, fromBarcode);
+        this.iniciarVenda(true, item, fromBarcode);
         return;
       }
       this.iniciarVenda(true, item, fromBarcode);
@@ -1368,7 +1368,11 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   cancelarVenda(): void {
-    if (!this.currentSale) return;
+    if (!this.currentSale) {
+      if (!this.currentDraftId) return;
+      this.removerRascunhoAtual();
+      return;
+    }
     if (!confirm('Cancelar esta venda?')) return;
 
     const saleId = this.currentSale.id;
@@ -1383,6 +1387,19 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
         alert(err?.error?.message ?? 'Nao foi possivel cancelar a venda.');
       }
     });
+  }
+
+  private removerRascunhoAtual(): void {
+    if (!this.currentDraftId) return;
+    const draftId = this.currentDraftId;
+    const key = this.toDraftKey(draftId);
+    this.cartBySale.delete(key);
+    this.paymentsBySale.delete(key);
+    this.draftSales = this.draftSales.filter(d => d.id !== draftId);
+    this.currentDraftId = null;
+    this.persistDraftState();
+    this.applyDraftToView();
+    this.ensureDraft();
   }
 
   private removeSale(saleId: number): void {
