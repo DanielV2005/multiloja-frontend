@@ -182,6 +182,8 @@ export interface ProdutoFormDialogData {
       </div>
     </main>
 
+    <small class="error" *ngIf="errorMessage">{{ errorMessage }}</small>
+
     <footer class="dialog-footer">
       <button
         type="button"
@@ -430,6 +432,7 @@ export class ProdutoFormDialogComponent implements OnInit {
   form: FormGroup;
   setores: Setor[] = [];
   salvando = false;
+  errorMessage = '';
 
   constructor(
     private fb: FormBuilder,
@@ -528,6 +531,7 @@ export class ProdutoFormDialogComponent implements OnInit {
       ativo       : true,
     };
 
+    this.errorMessage = '';
     this.salvando = true;
 
     let request$;
@@ -557,6 +561,19 @@ export class ProdutoFormDialogComponent implements OnInit {
         // aqui depois dá pra mapear mensagens bonitinhas
       }
     });
+  }
+
+
+  private getErrorMessage(err: any): string {
+    const body = err?.error;
+    if (Array.isArray(body?.errors) && body.errors.length) {
+      const first = body.errors[0];
+      return String(first?.ErrorMessage ?? 'Nome em uso.');
+    }
+    if (typeof body === 'string' && body.trim()) return body;
+    if (body?.message) return String(body.message);
+    if (body?.error) return String(body.error);
+    return 'Nome em uso.';
   }
 
   fechar(result: boolean): void {

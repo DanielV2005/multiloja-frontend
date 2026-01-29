@@ -28,6 +28,11 @@ body {
 
   --radius: 16px;
   --shadow: 0 10px 30px rgba(2, 6, 23, 0.06);
+
+  /* Scrollbar (padrão do PDV) */
+  --scroll-track: rgba(8,12,26,.8);
+  --scroll-thumb: rgba(80,110,160,.8);
+  --scroll-thumb-hover: rgba(120,150,200,.9);
 }
 
 .mat-mdc-dialog-container .mdc-dialog__surface{
@@ -76,10 +81,36 @@ body {
     --primary-600: #D9B24C;
     --focus: 0 0 0 3px rgba(240, 210, 122, .35);
     --shadow: 0 0.10px 15px rgb(255, 234, 0);
+
+    --scroll-track: rgba(8,12,26,.8);
+    --scroll-thumb: rgba(80,110,160,.8);
+    --scroll-thumb-hover: rgba(120,150,200,.95);
   }
 }
 
 body { background: var(--bg); color: var(--text); }
+
+/* Scrollbar global (padroniza todas as listas) */
+*{
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+*::-webkit-scrollbar{
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track{
+  background: var(--scroll-track);
+  border-radius: 10px;
+}
+*::-webkit-scrollbar-thumb{
+  background: var(--scroll-thumb);
+  border-radius: 10px;
+  border: 2px solid rgba(0,0,0,.2);
+}
+*::-webkit-scrollbar-thumb:hover{
+  background: var(--scroll-thumb-hover);
+}
 
 /* Padroniza setas de input number (WebKit/Blink) */
 input[type="number"]{

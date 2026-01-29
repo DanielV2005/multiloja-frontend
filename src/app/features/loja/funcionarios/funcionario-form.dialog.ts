@@ -48,7 +48,7 @@ export interface FuncionarioFormDialogData {
           </small>
         </div>
 
-        <div class="field">
+        <div class="field" *ngIf="!isEdit">
           <label for="cpf">CPF</label>
           <input id="cpf" type="text" autocomplete="off" formControlName="cpf" />
           <small class="error" *ngIf="cpfCtrl?.touched && cpfCtrl?.invalid">
@@ -263,12 +263,13 @@ export class FuncionarioFormDialogComponent {
   ) {
     const isEdit = !!data?.funcionario;
     const senhaValidators = isEdit ? [] : [Validators.required, Validators.minLength(6)];
+    const cpfValidators = isEdit ? [] : [Validators.required, Validators.maxLength(20)];
     const nivelInicial = data?.funcionario?.nivelAcesso ?? 3;
 
     this.form = this.fb.group({
       nome: ['', [Validators.required, Validators.maxLength(120)]],
       email: ['', [Validators.required, Validators.email, Validators.maxLength(160)]],
-      cpf: ['', [Validators.required, Validators.maxLength(20)]],
+      cpf: ['', cpfValidators],
       senha: ['', senhaValidators],
       nivelAcesso: [nivelInicial, [Validators.required, Validators.min(1), Validators.max(3)]],
     });
@@ -277,7 +278,6 @@ export class FuncionarioFormDialogComponent {
       this.form.patchValue({
         nome: data.funcionario.nome,
         email: data.funcionario.email,
-        cpf: data.funcionario.cpf ?? '',
       });
     }
   }
@@ -312,8 +312,6 @@ export class FuncionarioFormDialogComponent {
     }
 
     const value = this.form.getRawValue();
-    const cpf = String(value.cpf ?? '').replace(/\D/g, '');
-
     if (this.isEdit) {
       const funcionario = this.data?.funcionario;
       if (!funcionario?.usuarioId) return;
@@ -321,7 +319,6 @@ export class FuncionarioFormDialogComponent {
       const dto = {
         nome: String(value.nome ?? '').trim(),
         email: String(value.email ?? '').trim(),
-        cpf,
       };
 
       this.salvando = true;
@@ -338,6 +335,8 @@ export class FuncionarioFormDialogComponent {
       });
       return;
     }
+
+    const cpf = String(value.cpf ?? '').replace(/\D/g, '');
 
     const dto: NovoFuncionario = {
       nome: String(value.nome ?? '').trim(),

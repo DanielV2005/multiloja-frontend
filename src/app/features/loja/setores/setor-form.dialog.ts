@@ -7,6 +7,8 @@ import {
   MatDialogRef,
   MAT_DIALOG_DATA
 } from '@angular/material/dialog';
+import { EMPTY, forkJoin } from 'rxjs';
+import { finalize, map, switchMap } from 'rxjs/operators';
 
 import { SetorService, NovoSetor, Setor } from '../../../core/services/setor.service';
 
@@ -42,12 +44,12 @@ export interface SetorFormData {
           formControlName="nome"
           placeholder="Ex.: Vendas" />
         <small class="error" *ngIf="form.controls.nome.touched && form.controls.nome.invalid">
-          Informe um nome válido (até 80 caracteres).
+          Informe um nome v&aacute;lido (at&eacute; 80 caracteres).
         </small>
       </label>
 
       <label class="field">
-        <span class="label">Descrição (opcional)</span>
+        <span class="label">Descri&#231;&#227;o (opcional)</span>
         <input
           type="text"
           formControlName="descricao"
@@ -65,7 +67,7 @@ export interface SetorFormData {
     </form>
   </div>
   `,
-  styles: [/* mesmo CSS que você já tinha */`
+  styles: [/* CSS existente */`
     .material-symbols-outlined{
       font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;
     }
@@ -141,37 +143,67 @@ export class SetorFormDialogComponent {
   salvar(): void {
     if (this.form.invalid || this.loading) return;
 
-    const dto: NovoSetor = this.form.getRawValue();
-    this.loading = true;
-
-    if (this.data.mode === 'create') {
-      this.api.criar(dto).subscribe({
-        next: () => {
-          this.loading = false;
-          this.ref.close(true);
-        },
-        error: (err: any) => {
-          console.error('Erro ao salvar setor (criar)', err);
-          this.loading = false;
-          alert('Não foi possível salvar o setor.');
-        }
-      });
-    } else {
-      this.api.atualizar(this.data.setor!.id, dto).subscribe({
-        next: () => {
-          this.loading = false;
-          this.ref.close(true);
-        },
-        error: (err: any) => {
-          console.error('Erro ao salvar setor (atualizar)', err);
-          this.loading = false;
-          alert('Não foi possível salvar o setor.');
-        }
-      });
+    const raw = this.form.getRawValue();
+    const nome = (raw.nome ?? '').trim();
+    if (!nome) {
+      this.form.controls.nome.setErrors({ required: true });
+      this.form.controls.nome.markAsTouched();
+      return;
     }
+
+    const dto: NovoSetor = { ...raw, nome };
+    const currentId = this.data.setor?.id ?? null;
+
+    this.loading = true;
+    this.nomeJaExiste(nome, currentId)
+      .pipe(
+        switchMap((exists) => {
+          if (exists) {
+            alert('Ja existe um setor com este nome (ativo ou desativado).');
+            return EMPTY;
+          }
+
+          if (this.data.mode === 'create') {
+            return this.api.criar(dto);
+          }
+          return this.api.atualizar(this.data.setor!.id, dto);
+        }),
+        finalize(() => {
+          this.loading = false;
+        })
+      )
+      .subscribe({
+        next: () => this.ref.close(true),
+        error: (err: any) => {
+          console.error('Erro ao salvar setor', err);
+          alert('Nao foi possivel salvar o setor.');
+        }
+      });
   }
 
   fechar(): void {
     this.ref.close(false);
+  }
+
+  private nomeJaExiste(nome: string, currentId: number | null) {
+    const alvo = this.normalizeNome(nome);
+
+    return forkJoin({
+      ativos: this.api.listar(),
+      desativados: this.api.listarDesativados(),
+    }).pipe(
+      map(({ ativos, desativados }) => {
+        const todos = [...(ativos ?? []), ...(desativados ?? [])];
+        return todos.some(s => {
+          if (!s) return false;
+          if (currentId && s.id === currentId) return false;
+          return this.normalizeNome(s.nome ?? '') === alvo;
+        });
+      })
+    );
+  }
+
+  private normalizeNome(value: string): string {
+    return String(value ?? '').trim().toLowerCase();
   }
 }

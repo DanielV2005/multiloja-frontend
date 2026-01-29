@@ -1091,7 +1091,12 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
         }
         this.ensureDraft();
       },
-      error: err => console.error('[PDV] erro ao listar vendas abertas', err)
+      error: err => {
+        console.error('[PDV] erro ao listar vendas abertas', err);
+        if (!this.currentSale && !this.currentDraftId) {
+          this.ensureDraft();
+        }
+      }
     });
   }
 
@@ -1153,6 +1158,10 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   adicionarItem(item: ItemVendavelDto, fromBarcode: boolean = false): void {
     if (!this.currentSale) {
+      if (this.isDraftActive()) {
+        this.addItemToDraft(item, fromBarcode);
+        return;
+      }
       this.iniciarVenda(true, item, fromBarcode);
       return;
     }

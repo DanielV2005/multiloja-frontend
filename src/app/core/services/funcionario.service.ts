@@ -43,7 +43,7 @@ export class FuncionarioService {
   }
 
 
-  atualizarFuncionario(usuarioId: string, dto: { nome: string; email: string; cpf: string }): Observable<void> {
+  atualizarFuncionario(usuarioId: string, dto: { nome: string; email: string }): Observable<void> {
     return this.http.put<void>(`${this.baseUrl}/api/Funcionarios/${usuarioId}`, dto);
   }
 
@@ -61,7 +61,7 @@ export class FuncionarioService {
   }
 
   /* Não existe endpoint "reativar", então tentamos vincular de novo (se seu backend aceitar reativação por aí) */
-  vincular(usuarioId: string): Observable<void> {
-    return this.http.post<void>(`${this.baseUrl}/api/Funcionarios/vincular`, { usuarioId });
+  vincular(cpf: string): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/api/Funcionarios/vincular`, { cpf });
   }
 }

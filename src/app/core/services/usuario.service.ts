@@ -138,7 +138,8 @@ export class UsuarioService {
       )
       .pipe(
         tap(token => {
-          const jwt = token?.toString().trim();
+          const raw = token?.toString().trim() ?? '';
+          const jwt = this.extractToken(raw);
           if (jwt) {
             this.authStorage.setToken(jwt);
             console.log('[selecionarLoja] novo token salvo', jwt);
@@ -148,5 +149,25 @@ export class UsuarioService {
         }),
         map(() => void 0)
       );
+  }
+
+  private extractToken(raw: string): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as { token?: string };
+        if (parsed?.token) return String(parsed.token).trim();
+      } catch {
+        // ignore parse error and continue
+      }
+    }
+
+    if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      return trimmed.slice(1, -1).trim();
+    }
+
+    return trimmed;
   }
 }

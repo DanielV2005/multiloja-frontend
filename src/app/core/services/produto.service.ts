@@ -2,6 +2,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 
 /**
@@ -52,6 +53,15 @@ export class ProdutoService {
 
   constructor(private http: HttpClient) {}
 
+  private normalizeList<T>(res: unknown): T[] {
+    if (Array.isArray(res)) return res as T[];
+    const items = (res as { items?: T[] })?.items;
+    if (Array.isArray(items)) return items;
+    const data = (res as { data?: T[] })?.data;
+    if (Array.isArray(data)) return data;
+    return [];
+  }
+
   /**
    * GET /api/Produtos/ativos
    */
@@ -61,10 +71,12 @@ export class ProdutoService {
       params = params.set('filtro', filtro.trim());
     }
 
-    return this.http.get<Produto[]>(`${this.api}/ativos`, {
-      params,
-      responseType: 'json' as const,
-    });
+    return this.http
+      .get<Produto[] | { items?: Produto[] } | { data?: Produto[] }>(`${this.api}/ativos`, {
+        params,
+        responseType: 'json' as const,
+      })
+      .pipe(map(res => this.normalizeList<Produto>(res)));
   }
 
   /**
@@ -76,10 +88,12 @@ export class ProdutoService {
       params = params.set('filtro', filtro.trim());
     }
 
-    return this.http.get<Produto[]>(`${this.api}/desativados`, {
-      params,
-      responseType: 'json' as const,
-    });
+    return this.http
+      .get<Produto[] | { items?: Produto[] } | { data?: Produto[] }>(`${this.api}/desativados`, {
+        params,
+        responseType: 'json' as const,
+      })
+      .pipe(map(res => this.normalizeList<Produto>(res)));
   }
 
   /**

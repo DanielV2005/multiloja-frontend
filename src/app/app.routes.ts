@@ -1,5 +1,6 @@
-import { Routes } from '@angular/router';
+﻿import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+import { lojaGuard } from './core/guards/loja.guard';
 
 import { LoginComponent } from './features/identity/login/login.component';
 import { MinhasLojasComponent } from './features/identity/minhas-lojas/minhas-lojas.component';
@@ -9,13 +10,13 @@ export const routes: Routes = [
 
   {
     path: 'minhas-lojas',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     component: MinhasLojasComponent,
   },
 
   {
     path: 'loja/:id',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     loadComponent: () =>
       import('./features/loja/painel-loja.component').then(m => m.PainelLojaComponent),
   },
@@ -25,45 +26,45 @@ export const routes: Routes = [
   // =========================
   {
     path: 'loja/:id/estoque',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     loadComponent: () =>
       import('./features/loja/estoque/estoque-page.component').then(m => m.EstoquePageComponent),
   },
   {
     path: 'loja/:id/estoque/desativados',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     loadComponent: () =>
       import('./features/loja/estoque/produtos-desativados-page.component').then(m => m.ProdutosDesativadosPageComponent),
   },
 
   // =========================
-  // SERVIÇOS
+  // SERVIÃ‡OS
   // =========================
   {
     path: 'loja/:id/servicos',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     loadComponent: () =>
       import('./features/loja/servicos/servicos-page.component').then(m => m.ServicosPageComponent),
   },
   {
     path: 'loja/:id/servicos/desativados',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     loadComponent: () =>
       import('./features/loja/servicos/servicos-desativados-page.component').then(m => m.ServicosDesativadosPageComponent),
   },
 
   // =========================
-  // FUNCIONÁRIOS
+  // FUNCIONÃRIOS
   // =========================
   {
     path: 'loja/:id/funcionarios',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     loadComponent: () =>
       import('./features/loja/funcionarios/funcionarios-page.component').then(m => m.FuncionariosPageComponent),
   },
   {
     path: 'loja/:id/funcionarios/desativados',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     loadComponent: () =>
       import('./features/loja/funcionarios/funcionarios-desativados-page.component').then(m => m.FuncionariosDesativadosPageComponent),
   },
@@ -73,7 +74,7 @@ export const routes: Routes = [
   // =========================
   {
     path: 'loja/:id/pdv',
-    canActivate: [authGuard],
+    canActivate: [authGuard, lojaGuard],
     loadComponent: () =>
       import('./features/pdv/pdv.component').then(m => m.PdvComponent),
   },
@@ -81,3 +82,5 @@ export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'login' },
   { path: '**', redirectTo: 'login' },
 ];
+
+

@@ -59,6 +59,7 @@ export interface ServicoFormDialogData {
           </small>
         </div>
       </div>
+      <small class="error" *ngIf="errorMessage">{{ errorMessage }}</small>
     </main>
 
     <footer class="dialog-footer">
@@ -257,6 +258,7 @@ export interface ServicoFormDialogData {
 export class ServicoFormDialogComponent implements OnInit {
   form: FormGroup;
   salvando = false;
+  errorMessage = '';
 
   constructor(
     private fb: FormBuilder,
@@ -305,6 +307,7 @@ export class ServicoFormDialogComponent implements OnInit {
       ativo: true,
     };
 
+    this.errorMessage = '';
     this.salvando = true;
 
     const req$ = this.isEdicao && this.data.servico?.id
@@ -321,6 +324,19 @@ export class ServicoFormDialogComponent implements OnInit {
         this.salvando = false;
       },
     });
+  }
+
+
+  private getErrorMessage(err: any): string {
+    const body = err?.error;
+    if (Array.isArray(body?.errors) && body.errors.length) {
+      const first = body.errors[0];
+      return String(first?.ErrorMessage ?? 'Nome em uso.');
+    }
+    if (typeof body === 'string' && body.trim()) return body;
+    if (body?.message) return String(body.message);
+    if (body?.error) return String(body.error);
+    return 'Nome em uso.';
   }
 
   fechar(result: ProdutoServico | boolean | null): void {

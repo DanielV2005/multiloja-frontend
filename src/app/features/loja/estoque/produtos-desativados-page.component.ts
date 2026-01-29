@@ -384,10 +384,6 @@ export class ProdutosDesativadosPageComponent implements OnInit {
       return;
     }
 
-    if (!confirm(`Reativar o produto "${produto.nome}"?`)) {
-      return;
-    }
-
     this.reativandoId = produto.id;
 
     this.produtoService.reativar(produto.id).subscribe({

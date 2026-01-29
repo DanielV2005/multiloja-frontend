@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl, ValidationErrors } from '@angular/forms';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 
 import { FuncionarioService } from '../../../core/services/funcionario.service';
@@ -29,7 +29,13 @@ import { FuncionarioService } from '../../../core/services/funcionario.service';
     <main class="dialog-body">
       <div class="field">
         <label for="cpf">CPF</label>
-        <input id="cpf" type="text" autocomplete="off" formControlName="cpf" />
+        <input id="cpf"
+               type="text"
+               autocomplete="off"
+               inputmode="numeric"
+               maxlength="14"
+               formControlName="cpf"
+               (input)="onCpfInput($event)" />
         <small class="error" *ngIf="cpfCtrl?.touched && cpfCtrl?.invalid">
           Informe um CPF válido.
         </small>
@@ -215,7 +221,7 @@ export class FuncionarioVincularDialogComponent {
     private dialogRef: MatDialogRef<FuncionarioVincularDialogComponent>,
   ) {
     this.form = this.fb.group({
-      cpf: ['', [Validators.required, Validators.minLength(11)]],
+      cpf: ['', [Validators.required, this.cpfDigitsValidator]],
     });
   }
 
@@ -228,45 +234,63 @@ export class FuncionarioVincularDialogComponent {
     }
 
     const value = this.form.getRawValue();
-    const cpf = String(value.cpf ?? '').replace(/\D/g, '');
+    const cpf = this.onlyDigits(String(value.cpf ?? ''));
 
     this.errorMessage = '';
     this.salvando = true;
 
-    this.api.buscarPorCpf(cpf).subscribe({
-      next: (items) => {
-        if (!items || items.length === 0) {
-          this.salvando = false;
-          this.errorMessage = 'Usuário não possui cadastro na empresa.';
-          return;
-        }
-
-        const alvo = items[0];
-        if (!alvo?.usuarioId) {
-          this.salvando = false;
-          this.errorMessage = 'Usuário não possui cadastro na empresa.';
-          return;
-        }
-
-        this.api.vincular(alvo.usuarioId).subscribe({
-          next: () => {
-            this.salvando = false;
-            this.dialogRef.close(true);
-          },
-          error: () => {
-            this.salvando = false;
-            this.errorMessage = 'Não foi possível vincular. Tente novamente.';
-          },
-        });
-      },
-      error: () => {
+    this.api.vincular(cpf).subscribe({
+      next: () => {
         this.salvando = false;
-        this.errorMessage = 'Usuário não possui cadastro na empresa.';
+        this.dialogRef.close(true);
       },
+      error: (err) => {
+        this.salvando = false;
+        this.errorMessage = this.getErrorMessage(err);
+      }
     });
+  }
+
+  private getErrorMessage(err: any): string {
+    const body = err?.error;
+    if (typeof body === 'string' && body.trim()) return body;
+    if (body?.message) return String(body.message);
+    if (body?.error) return String(body.error);
+    return 'Usu\u00E1rio n\u00E3o possui cadastro na empresa.';
   }
 
   fechar(result: boolean): void {
     this.dialogRef.close(result);
+  }
+
+  onCpfInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const digits = this.onlyDigits(input.value).slice(0, 11);
+    const formatted = this.formatCpf(digits);
+    if (formatted !== input.value) {
+      input.value = formatted;
+    }
+    this.form.get('cpf')?.setValue(formatted, { emitEvent: false });
+  }
+
+  private cpfDigitsValidator = (control: AbstractControl): ValidationErrors | null => {
+    const digits = this.onlyDigits(String(control.value ?? ''));
+    return digits.length === 11 ? null : { cpfDigits: true };
+  };
+
+  private onlyDigits(value: string): string {
+    return value.replace(/\D/g, '');
+  }
+
+  private formatCpf(digits: string): string {
+    const p1 = digits.slice(0, 3);
+    const p2 = digits.slice(3, 6);
+    const p3 = digits.slice(6, 9);
+    const p4 = digits.slice(9, 11);
+    let result = p1;
+    if (p2) result += `.${p2}`;
+    if (p3) result += `.${p3}`;
+    if (p4) result += `-${p4}`;
+    return result;
   }
 }

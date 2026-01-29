@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+Ôªøimport { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -22,7 +22,7 @@ import { AuthStorageService } from '../../../core/services/auth-storage.service'
 
       <form class="form" [formGroup]="form" (ngSubmit)="submit()" novalidate>
         <div class="field">
-          <label for="nome">Usu«≠rio</label>
+          <label for="nome">Usu&#225;rio</label>
           <input id="nome"
                  class="input"
                  type="text"
@@ -30,9 +30,9 @@ import { AuthStorageService } from '../../../core/services/auth-storage.service'
                  autocapitalize="none"
                  spellcheck="false"
                  formControlName="nome"
-                 placeholder="Seu usu«≠rio" />
+                 placeholder="Seu usu&#225;rio" />
           <small class="hint error" *ngIf="form.controls.nome.touched && form.controls.nome.invalid">
-            Informe seu usu«≠rio.
+            Informe seu usu&#225;rio.
           </small>
         </div>
 
@@ -61,6 +61,8 @@ import { AuthStorageService } from '../../../core/services/auth-storage.service'
           </small>
         </div>
 
+        <small class="hint error" *ngIf="errorMessage">{{ errorMessage }}</small>
+
         <button class="btn btn--primary" [disabled]="loading || form.invalid">
           <span *ngIf="!loading">Entrar</span>
           <span class="spinner" *ngIf="loading" aria-hidden="true"></span>
@@ -68,12 +70,12 @@ import { AuthStorageService } from '../../../core/services/auth-storage.service'
       </form>
 
       <footer class="card__footer muted">
-        ∂∏ {{ year }} Multiloja É?Ω Seguran«ıa em primeiro lugar
+        &copy; {{ year }} Multiloja - Seguran&#231;a em primeiro lugar
       </footer>
     </div>
   </section>
   `,
-  styles: [/* mesmo CSS que voc«¶ j«≠ tinha */`
+  styles: [/* mesmo CSS que vocE ja tinha */`
     .auth{ min-height:100dvh; display:grid; place-items:center; padding:32px 16px;
            background: radial-gradient(1200px 600px at 100% -10%, rgba(37,99,235,.08), transparent 55%),
                        radial-gradient(900px 500px at -10% 100%, rgba(99,102,241,.08), transparent 55%); }
@@ -126,6 +128,7 @@ export class LoginComponent {
 
   show = false;
   loading = false;
+  errorMessage = '';
   year = new Date().getFullYear();
 
   form = this.fb.group({
@@ -135,6 +138,7 @@ export class LoginComponent {
 
   submit() {
     if (this.form.invalid || this.loading) return;
+    this.errorMessage = '';
     this.loading = true;
 
     const { nome, senha } = this.form.value as { nome: string; senha: string };
@@ -175,8 +179,21 @@ export class LoginComponent {
 
         this.router.navigateByUrl('/minhas-lojas');
       },
-      error: () => { this.loading = false; },
+      error: (err) => {
+        this.errorMessage = this.getErrorMessage(err);
+        this.loading = false;
+      },
       complete: () => { this.loading = false; }
     });
+  }
+
+  private getErrorMessage(err: any): string {
+    const body = err?.error;
+    if (err?.status === 400) return 'Usuario ou senha incorreto.';
+    if (typeof body === 'string' && body.trim()) return body.trim();
+    if (body?.message) return String(body.message).trim();
+    if (body?.title) return String(body.title).trim();
+    if (body?.error) return String(body.error).trim();
+    return 'Usuario ou senha invalidos.';
   }
 }
