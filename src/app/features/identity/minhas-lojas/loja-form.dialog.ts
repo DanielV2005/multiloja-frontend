@@ -2,7 +2,7 @@ import { Component, Inject, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
-import { Loja, NovaLoja } from '../../../core/services/usuario.service';
+import { Loja, NovaLoja, UsuarioService } from '../../../core/services/usuario.service';
 
 export type FormMode = 'create' | 'edit';
 export interface LojaFormData { mode: FormMode; loja?: Loja; }
@@ -25,10 +25,11 @@ export interface LojaFormData { mode: FormMode; loja?: Loja; }
 
       <label class="lbl">Endereço (opcional)</label>
       <input class="input" type="text" formControlName="endereco" placeholder="Rua, número, bairro…" />
+      <small class="err" *ngIf="errorMessage">{{ errorMessage }}</small>
 
       <footer class="dlg__footer">
         <button type="button" class="link" (click)="close()">Cancelar</button>
-        <button class="gold" [disabled]="form.invalid">{{ data.mode === 'create' ? 'Criar' : 'Salvar' }}</button>
+        <button class="gold" [disabled]="form.invalid || loading">{{ data.mode === 'create' ? 'Criar' : 'Salvar' }}</button>
       </footer>
     </form>
   </div>
@@ -84,6 +85,7 @@ export interface LojaFormData { mode: FormMode; loja?: Loja; }
 })
 export class LojaFormDialogComponent {
   private fb = inject(FormBuilder);
+  private api = inject(UsuarioService);
 
   readonly form = this.fb.nonNullable.group({
     nome: ['', Validators.required],
@@ -91,7 +93,7 @@ export class LojaFormDialogComponent {
   });
 
   constructor(
-    private ref: MatDialogRef<LojaFormDialogComponent, NovaLoja | undefined>,
+    private ref: MatDialogRef<LojaFormDialogComponent, number | undefined>,
     @Inject(MAT_DIALOG_DATA) public data: LojaFormData
   ) {
     if (data.loja){
@@ -101,10 +103,65 @@ export class LojaFormDialogComponent {
       });
     }
   }
-
   submit(){
-    if (this.form.invalid){ this.form.markAllAsTouched(); return; }
-    this.ref.close(this.form.getRawValue() as NovaLoja);
+    if (this.form.invalid || this.loading){ this.form.markAllAsTouched(); return; }
+    const dto = this.form.getRawValue() as NovaLoja;
+    this.errorMessage = '';
+    this.loading = true;
+
+    if (this.data.mode === 'create') {
+      this.api.criarLoja(dto).subscribe({
+        next: id => {
+          this.loading = false;
+          this.ref.close(id);
+        },
+        error: err => {
+          console.error('Erro ao criar loja', err);
+          this.loading = false;
+          this.errorMessage = this.getErrorMessage(err, 'Nao foi possivel criar a loja.');
+        }
+      });
+      return;
+    }
+
+    const lojaId = this.data.loja?.id;
+    if (lojaId == null) {
+      this.loading = false;
+      this.errorMessage = 'Nao foi possivel identificar a loja para edicao.';
+      return;
+    }
+
+    this.api.atualizarLoja(lojaId, dto).subscribe({
+      next: _ => {
+        this.loading = false;
+        this.ref.close(lojaId);
+      },
+      error: err => {
+        console.error('Erro ao salvar alteracoes', err);
+        this.loading = false;
+        this.errorMessage = this.getErrorMessage(err, 'Nao foi possivel salvar alteracoes.');
+      }
+    });
   }
   close(){ this.ref.close(undefined); }
+
+  loading = false;
+  errorMessage = '';
+  private getErrorMessage(err: any, fallback: string): string {
+    const body = err?.error;
+    const raw = typeof body === 'string' ? body : (body?.message ?? body?.error ?? '');
+    if (typeof raw === 'string' && raw.trim()) {
+      const clean = raw.split('\n')[0].trim();
+      const lower = clean.toLowerCase();
+      if (lower.includes('ja existe uma loja com esse nome')) {
+        return 'Ja existe uma loja com esse nome.';
+      }
+      if (clean.includes(':')) {
+        const tail = clean.split(':').slice(1).join(':').trim();
+        if (tail) return tail;
+      }
+      return clean;
+    }
+    return fallback;
+  }
 }

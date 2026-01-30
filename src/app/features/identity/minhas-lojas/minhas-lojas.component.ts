@@ -6,8 +6,7 @@ import { Router } from '@angular/router';
 
 import {
   UsuarioService,
-  Loja,
-  NovaLoja
+  Loja
 } from '../../../core/services/usuario.service';
 
 import {
@@ -93,7 +92,7 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
           Nenhuma loja encontrada.
         </p>
 
-        <!-- rodap√© com bot√µes -->
+        <!-- rodapÈ com botıes -->
         <div class="create">
           <button
             class="gold icon-only"
@@ -113,21 +112,21 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
         </div>
       </aside>
 
-      <!-- coluna da direita (gr√°fico geral) -->
+      <!-- coluna da direita (gr·fico geral) -->
       <main class="content">
         <div class="card chart">
           <header class="card__header">
             <h3>Lucros Totais</h3>
-            <small class="muted">todas as lojas ‚Äî em breve</small>
+            <small class="muted">todas as lojas ó em breve</small>
           </header>
 
           <div class="chart-placeholder"
                role="img"
-               aria-label="Gr√°fico de lucros (em breve)">
+               aria-label="Gr·fico de lucros (em breve)">
             <div class="spark"></div>
             <div class="grid"><div *ngFor="let _ of gridCols"></div></div>
             <div class="legend muted">
-              √Årea reservada para gr√°fico (Chart.js/Recharts/NGX-Charts)
+              ¡rea reservada para gr·fico (Chart.js/Recharts/NGX-Charts)
             </div>
           </div>
         </div>
@@ -489,7 +488,7 @@ export class MinhasLojasComponent implements OnInit {
         this.loading = false;
 
         if (err?.status === 401) {
-          alert('Sess√£o expirada. Fa√ßa login novamente.');
+          alert('Sess„o expirada. FaÁa login novamente.');
           localStorage.removeItem('token');
           location.href = '/login';
         }
@@ -503,20 +502,20 @@ export class MinhasLojasComponent implements OnInit {
     return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase();
   }
 
-  // S√≥ marca sele√ß√£o no backend e visualmente
+  // SÛ marca seleÁ„o no backend e visualmente
   selecionar(l: Loja){
     if (l?.id == null || Number.isNaN(+l.id)) {
-      console.warn('Loja sem id v√°lido:', l);
+      console.warn('Loja sem id v·lido:', l);
       return;
     }
 
     this.selectedId = l.id;
     this.api.selecionarLoja(l.id).subscribe({
-      error: err => console.warn('Falha ao registrar sele√ß√£o da loja (mas ignoro):', err)
+      error: err => console.warn('Falha ao registrar seleÁ„o da loja (mas ignoro):', err)
     });
   }
 
-  // Marca sele√ß√£o E navega para o painel
+  // Marca seleÁ„o E navega para o painel
   entrarNaLoja(l: Loja){
     if (l?.id == null || Number.isNaN(+l.id)) return;
 
@@ -535,13 +534,9 @@ export class MinhasLojasComponent implements OnInit {
     const data: LojaFormData = { mode: 'create' };
     this.dialog.open(LojaFormDialogComponent, { data, autoFocus: false })
       .afterClosed()
-      .subscribe((dto?: NovaLoja) => {
-        if (!dto) return;
-
-        this.api.criarLoja(dto).subscribe({
-          next: id => this.recarregar(id),
-          error: _ => alert('N√£o foi poss√≠vel criar a loja.')
-        });
+      .subscribe((id?: number) => {
+        if (!id) return;
+        this.recarregar(id);
       });
   }
 
@@ -554,16 +549,11 @@ export class MinhasLojasComponent implements OnInit {
     const data: LojaFormData = { mode: 'edit', loja: l };
     this.dialog.open(LojaFormDialogComponent, { data, autoFocus: false })
       .afterClosed()
-      .subscribe((dto?: NovaLoja) => {
-        if (!dto) return;
-
-        this.api.atualizarLoja(l.id, dto).subscribe({
-          next: _ => this.recarregar(l.id),
-          error: _ => alert('N√£o foi poss√≠vel salvar altera√ß√µes.')
-        });
+      .subscribe((id?: number) => {
+        if (!id) return;
+        this.recarregar(id);
       });
   }
-
   abrirLojasDesativadas(){
     this.dialog
       .open(LojasDesativadasDialogComponent, { autoFocus: false })
@@ -586,7 +576,7 @@ export class MinhasLojasComponent implements OnInit {
         this.lojas = this.lojas.filter(x => x.id !== l.id);
         if (this.selectedId === l.id) this.selectedId = null;
       },
-      error: _ => alert('N√£o foi poss√≠vel desativar a loja.')
+      error: _ => alert('N„o foi possÌvel desativar a loja.')
     });
   }
 

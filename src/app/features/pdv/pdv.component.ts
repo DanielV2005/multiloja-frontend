@@ -1,9 +1,10 @@
 import { AfterViewInit, Component, ElementRef, ViewChild, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
+import { AuthStorageService } from '../../core/services/auth-storage.service';
 import { ItensVendaveisService, ItemVendavelDto } from '../../core/services/itens-vendaveis.service';
 import { PdvService, SaleSummaryDto } from '../../core/services/pdv.service';
 import { firstValueFrom, forkJoin } from 'rxjs';
@@ -43,7 +44,7 @@ interface DraftPayload {
 @Component({
   standalone: true,
   selector: 'app-pdv',
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   template: `
   <section class="page">
     <header class="topbar">
@@ -67,10 +68,32 @@ interface DraftPayload {
     <main class="layout">
       <section class="panel search">
         <header class="panel-header">
-          <a class="link" [routerLink]="['/loja', lojaId]">
-            <span class="material-symbols-outlined">arrow_back</span>
-            <span>Voltar ao painel</span>
-          </a>
+          <div class="nav-actions">
+            <button
+              type="button"
+              class="link"
+              *ngIf="isOperador"
+              (click)="logout()"
+            >
+              <span class="material-symbols-outlined">logout</span>
+              <span>Logout</span>
+            </button>
+
+            <div class="menu" *ngIf="!isOperador">
+              <button
+                type="button"
+                class="link icon-only"
+                (click)="toggleMenu()"
+                [attr.aria-expanded]="menuOpen"
+              >
+                <span class="material-symbols-outlined">more_horiz</span>
+              </button>
+              <div class="menu-panel" *ngIf="menuOpen">
+                <button type="button" (click)="voltarPainel()">Voltar</button>
+                <button type="button" (click)="logout()">Logout</button>
+              </div>
+            </div>
+          </div>
           <div class="type-toggle">
             <button type="button" [class.active]="tipoFiltro === 'ALL'" (click)="setTipoFiltro('ALL')">Todos</button>
             <button type="button" [class.active]="tipoFiltro === 'PRODUTO'" (click)="setTipoFiltro('PRODUTO')">Produtos</button>
@@ -317,6 +340,55 @@ interface DraftPayload {
       padding:0 12px;
       cursor:pointer;
       text-decoration:none;
+    }
+    .link.icon-only{
+      width:36px;
+      padding:0;
+      justify-content:center;
+    }
+
+    .nav-actions{
+      position:relative;
+      display:flex;
+      align-items:center;
+    }
+
+    .menu{
+      position:relative;
+      display:inline-flex;
+      align-items:center;
+    }
+
+    .menu-panel{
+      position:absolute;
+      top:44px;
+      left:0;
+      min-width:160px;
+      padding:8px;
+      background:rgba(8,12,26,.98);
+      border:1px solid rgba(240,210,122,.4);
+      border-radius:12px;
+      box-shadow:0 12px 28px rgba(0,0,0,.45);
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      z-index:10;
+    }
+
+    .menu-panel button{
+      height:34px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:#050814;
+      color:var(--text);
+      padding:0 10px;
+      text-align:left;
+      cursor:pointer;
+    }
+
+    .menu-panel button:hover{
+      background:rgba(240,210,122,.12);
+      border-color:rgba(240,210,122,.6);
     }
 
     .title h2{ margin:0; font-size:1.5rem; }
@@ -818,6 +890,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private usuarioService = inject(UsuarioService);
   private itensService = inject(ItensVendaveisService);
   private pdvService = inject(PdvService);
+  private auth = inject(AuthStorageService);
   private host = inject(ElementRef<HTMLElement>);
 
   @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
@@ -856,6 +929,12 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private quantityErrors = new Map<string, string>();
   private quantityPending = new Map<string, number>();
   private stockByProductId = new Map<number, number>();
+
+  menuOpen = false;
+
+  get isOperador(): boolean {
+    return this.auth.nivelAcesso === 3;
+  }
 
   novoPagamento = {
     metodo: 2,
@@ -1965,6 +2044,16 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     }
   }
 
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.menuOpen) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (!target.closest('.menu')) {
+      this.menuOpen = false;
+    }
+  }
+
   private focusNextPdvField(direction: 1 | -1): void {
     const root = this.host?.nativeElement;
     if (!root) return;
@@ -2025,6 +2114,21 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     this.resultados = [];
     this.buscando = false;
     this.lastBarcode = '';
+  }
+
+  toggleMenu(): void {
+    this.menuOpen = !this.menuOpen;
+  }
+
+  voltarPainel(): void {
+    this.menuOpen = false;
+    this.router.navigate(['/loja', this.lojaId]);
+  }
+
+  logout(): void {
+    this.menuOpen = false;
+    this.auth.clear();
+    this.router.navigate(['/login']);
   }
 
   private isBarcodeLike(value: string): boolean {

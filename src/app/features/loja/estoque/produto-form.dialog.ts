@@ -72,10 +72,11 @@ export interface ProdutoFormDialogData {
           />
           <small
             class="error"
-            *ngIf="nomeCtrl?.touched && nomeCtrl?.invalid"
+            *ngIf="nomeCtrl?.touched && nomeCtrl?.invalid && !nomeServerError"
           >
             Informe o nome do produto.
           </small>
+          <small class="error" *ngIf="nomeServerError">{{ nomeServerError }}</small>
         </div>
 
         <!-- SETOR -->
@@ -112,6 +113,7 @@ export interface ProdutoFormDialogData {
             autocomplete="off"
             formControlName="codigoBarra"
           />
+          <small class="error" *ngIf="codigoServerError">{{ codigoServerError }}</small>
         </div>
       </div>
 
@@ -182,7 +184,7 @@ export interface ProdutoFormDialogData {
       </div>
     </main>
 
-    <small class="error" *ngIf="errorMessage">{{ errorMessage }}</small>
+    <small class="error" *ngIf="errorMessage && !nomeServerError && !codigoServerError">{{ errorMessage }}</small>
 
     <footer class="dialog-footer">
       <button
@@ -433,6 +435,8 @@ export class ProdutoFormDialogComponent implements OnInit {
   setores: Setor[] = [];
   salvando = false;
   errorMessage = '';
+  nomeServerError = '';
+  codigoServerError = '';
 
   constructor(
     private fb: FormBuilder,
@@ -504,6 +508,9 @@ export class ProdutoFormDialogComponent implements OnInit {
         precoVenda:  p.precoVenda,
       });
     }
+
+    this.nomeCtrl?.valueChanges.subscribe(() => this.clearFieldError('nome'));
+    this.form.get('codigoBarra')?.valueChanges.subscribe(() => this.clearFieldError('codigoBarra'));
   }
 
   private carregarSetores(): void {
@@ -532,6 +539,8 @@ export class ProdutoFormDialogComponent implements OnInit {
     };
 
     this.errorMessage = '';
+    this.nomeServerError = '';
+    this.codigoServerError = '';
     this.salvando = true;
 
     let request$;
@@ -541,7 +550,7 @@ export class ProdutoFormDialogComponent implements OnInit {
       if (id == null) {
         // segurança: nunca faz POST se for edição sem id
         this.salvando = false;
-        alert('Não foi possível identificar o produto para edição (id ausente).');
+        this.errorMessage = 'Nao foi possivel identificar o produto para edicao (id ausente).';
         console.error('[ProdutoFormDialog] edição sem id do produto', this.data.produto);
         return;
       }
@@ -558,17 +567,69 @@ export class ProdutoFormDialogComponent implements OnInit {
       error: err => {
         console.error('[ProdutoFormDialog] erro ao salvar produto', err);
         this.salvando = false;
-        // aqui depois dá pra mapear mensagens bonitinhas
+        this.applyServerErrors(err);
       }
     });
   }
 
 
+  private applyServerErrors(err: any): void {
+    const body = err?.error;
+    if (Array.isArray(body?.errors) && body.errors.length) {
+      let matched = false;
+      for (const item of body.errors) {
+        const prop = String(item?.PropertyName ?? item?.propertyName ?? '').toLowerCase();
+        const message = String(item?.ErrorMessage ?? item?.errorMessage ?? 'Nome em uso.');
+        if (prop.includes('nome')) {
+          this.nomeServerError = message;
+          this.nomeCtrl?.setErrors({ server: true });
+          matched = true;
+        }
+        if (prop.includes('codigo')) {
+          this.codigoServerError = message;
+          this.form.get('codigoBarra')?.setErrors({ server: true });
+          matched = true;
+        }
+      }
+      if (matched) return;
+    }
+    const msg = this.getErrorMessage(err);
+    const msgLower = msg.toLowerCase();
+    if (msgLower.includes('nome em uso')) {
+      this.nomeServerError = msg;
+      this.nomeCtrl?.setErrors({ server: true });
+      return;
+    }
+    if (msgLower.includes('codigo em uso') || msgLower.includes('código em uso') || msgLower.includes('codigo')) {
+      this.codigoServerError = msg;
+      this.form.get('codigoBarra')?.setErrors({ server: true });
+      return;
+    }
+    this.errorMessage = msg;
+  }
+
+  private clearFieldError(field: 'nome' | 'codigoBarra'): void {
+    if (field === 'nome' && this.nomeServerError) {
+      this.nomeServerError = '';
+      const ctrl = this.nomeCtrl;
+      if (ctrl?.hasError('server')) {
+        ctrl.setErrors(null);
+      }
+    }
+    if (field === 'codigoBarra' && this.codigoServerError) {
+      this.codigoServerError = '';
+      const ctrl = this.form.get('codigoBarra');
+      if (ctrl?.hasError('server')) {
+        ctrl.setErrors(null);
+      }
+    }
+  }
+
   private getErrorMessage(err: any): string {
     const body = err?.error;
     if (Array.isArray(body?.errors) && body.errors.length) {
       const first = body.errors[0];
-      return String(first?.ErrorMessage ?? 'Nome em uso.');
+      return String(first?.ErrorMessage ?? first?.errorMessage ?? 'Nome em uso.');
     }
     if (typeof body === 'string' && body.trim()) return body;
     if (body?.message) return String(body.message);

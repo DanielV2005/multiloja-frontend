@@ -43,8 +43,11 @@ export interface SetorFormData {
           type="text"
           formControlName="nome"
           placeholder="Ex.: Vendas" />
-        <small class="error" *ngIf="form.controls.nome.touched && form.controls.nome.invalid">
+        <small class="error" *ngIf="form.controls.nome.touched && form.controls.nome.invalid && !nomeDuplicado">
           Informe um nome v&aacute;lido (at&eacute; 80 caracteres).
+        </small>
+        <small class="error" *ngIf="nomeDuplicado">
+          Ja existe um setor com este nome (ativo ou desativado).
         </small>
       </label>
 
@@ -125,6 +128,7 @@ export class SetorFormDialogComponent {
   private ref = inject(MatDialogRef<SetorFormDialogComponent, boolean>);
 
   loading = false;
+  nomeDuplicado = false;
 
   form = this.fb.nonNullable.group({
     nome: ['', [Validators.required, Validators.maxLength(80)]],
@@ -138,6 +142,13 @@ export class SetorFormDialogComponent {
         descricao: data.setor.descricao ?? ''
       });
     }
+    this.form.controls.nome.valueChanges.subscribe(() => {
+      if (!this.nomeDuplicado) return;
+      this.nomeDuplicado = false;
+      if (this.form.controls.nome.hasError('duplicated')) {
+        this.form.controls.nome.setErrors(null);
+      }
+    });
   }
 
   salvar(): void {
@@ -155,11 +166,14 @@ export class SetorFormDialogComponent {
     const currentId = this.data.setor?.id ?? null;
 
     this.loading = true;
+    this.nomeDuplicado = false;
     this.nomeJaExiste(nome, currentId)
       .pipe(
         switchMap((exists) => {
           if (exists) {
-            alert('Ja existe um setor com este nome (ativo ou desativado).');
+            this.nomeDuplicado = true;
+            this.form.controls.nome.setErrors({ duplicated: true });
+            this.form.controls.nome.markAsTouched();
             return EMPTY;
           }
 

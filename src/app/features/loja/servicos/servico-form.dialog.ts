@@ -40,9 +40,10 @@ export interface ServicoFormDialogData {
         <div class="field">
           <label for="nome">Nome do serviço</label>
           <input id="nome" type="text" autocomplete="off" formControlName="nome" />
-          <small class="error" *ngIf="nomeCtrl?.touched && nomeCtrl?.invalid">
+          <small class="error" *ngIf="nomeCtrl?.touched && nomeCtrl?.invalid && !nomeServerError">
             Informe o nome do serviço.
           </small>
+          <small class="error" *ngIf="nomeServerError">{{ nomeServerError }}</small>
         </div>
 
         <div class="field">
@@ -59,7 +60,7 @@ export interface ServicoFormDialogData {
           </small>
         </div>
       </div>
-      <small class="error" *ngIf="errorMessage">{{ errorMessage }}</small>
+      <small class="error" *ngIf="errorMessage && !nomeServerError">{{ errorMessage }}</small>
     </main>
 
     <footer class="dialog-footer">
@@ -259,6 +260,7 @@ export class ServicoFormDialogComponent implements OnInit {
   form: FormGroup;
   salvando = false;
   errorMessage = '';
+  nomeServerError = '';
 
   constructor(
     private fb: FormBuilder,
@@ -291,6 +293,8 @@ export class ServicoFormDialogComponent implements OnInit {
         precoVenda: (this.data.servico as any).precoVenda,
       });
     }
+
+    this.nomeCtrl?.valueChanges.subscribe(() => this.clearFieldError());
   }
 
   salvar(): void {
@@ -308,6 +312,7 @@ export class ServicoFormDialogComponent implements OnInit {
     };
 
     this.errorMessage = '';
+    this.nomeServerError = '';
     this.salvando = true;
 
     const req$ = this.isEdicao && this.data.servico?.id
@@ -322,16 +327,48 @@ export class ServicoFormDialogComponent implements OnInit {
       error: (err) => {
         console.error('[ServicoFormDialog] erro ao salvar serviço', err);
         this.salvando = false;
+        this.applyServerErrors(err);
       },
     });
   }
 
 
+  private applyServerErrors(err: any): void {
+    const body = err?.error;
+    if (Array.isArray(body?.errors) && body.errors.length) {
+      const first = body.errors[0];
+      const prop = String(first?.PropertyName ?? first?.propertyName ?? '').toLowerCase();
+      const message = String(first?.ErrorMessage ?? first?.errorMessage ?? 'Nome em uso.');
+      if (prop.includes('nome')) {
+        this.nomeServerError = message;
+        this.nomeCtrl?.setErrors({ server: true });
+        return;
+      }
+    }
+    const msg = this.getErrorMessage(err);
+    const msgLower = msg.toLowerCase();
+    if (msgLower.includes('nome em uso')) {
+      this.nomeServerError = msg;
+      this.nomeCtrl?.setErrors({ server: true });
+      return;
+    }
+    this.errorMessage = msg;
+  }
+
+  private clearFieldError(): void {
+    if (!this.nomeServerError) return;
+    this.nomeServerError = '';
+    const ctrl = this.nomeCtrl;
+    if (ctrl?.hasError('server')) {
+      ctrl.setErrors(null);
+    }
+  }
+
   private getErrorMessage(err: any): string {
     const body = err?.error;
     if (Array.isArray(body?.errors) && body.errors.length) {
       const first = body.errors[0];
-      return String(first?.ErrorMessage ?? 'Nome em uso.');
+      return String(first?.ErrorMessage ?? first?.errorMessage ?? 'Nome em uso.');
     }
     if (typeof body === 'string' && body.trim()) return body;
     if (body?.message) return String(body.message);
