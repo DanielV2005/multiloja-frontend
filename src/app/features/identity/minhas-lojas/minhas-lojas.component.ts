@@ -6,7 +6,8 @@ import { Router } from '@angular/router';
 
 import {
   UsuarioService,
-  Loja
+  Loja,
+  NovaLoja
 } from '../../../core/services/usuario.service';
 
 import {
@@ -45,6 +46,9 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
           <li *ngFor="let l of lojas">
             <div class="store-row" [class.active]="l.id === selectedId">
               <div class="store-pill"
+                   #pillEl
+                   (mouseenter)="setScrollable(pillEl, nameEl)"
+                   (mouseleave)="clearScrollable(pillEl)"
                    role="button"
                    tabindex="0"
                    [attr.aria-pressed]="l.id===selectedId"
@@ -55,7 +59,7 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
                   {{ initials(l.nome) }}
                 </span>
 
-                <span class="name">{{ l.nome }}</span>
+                <span class="name" #nameEl><span class="name-text">{{ l.nome }}</span></span>
 
                 <div class="row-actions">
                   <!-- ENTRAR NA LOJA -->
@@ -207,6 +211,15 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
       display:grid;
       gap:8px;
     }
+    .store-list li{
+      min-width:0;
+    }
+
+    .store-row{
+      width:100%;
+      overflow:hidden;
+    }
+
 
     .store-pill{
       display:flex;
@@ -220,6 +233,9 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
       color:var(--text);
       cursor:pointer;
       transition: background .15s, border-color .15s, box-shadow .2s;
+      width:100%;
+      overflow:hidden;
+      box-sizing:border-box;
     }
 
     .store-row.active .store-pill{
@@ -239,6 +255,8 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
       align-items:center;
       gap:8px;
       opacity:.95;
+
+      flex-shrink:0;
     }
     .store-pill:hover .row-actions{
       opacity:1;
@@ -315,16 +333,30 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
       background: linear-gradient(180deg, rgba(255,255,255,.35), transparent 40%),
                   linear-gradient(135deg, #F5D97A 0%, #D4AF37 45%, #B8860B 100%);
       box-shadow: 0 4px 14px rgba(212,175,55,.25);
-    }
 
+      flex-shrink:0;
+    }
+
     .name{
-      flex:1;
+      flex:1 1 0;
       min-width:0;
       overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
+      position:relative;
     }
-
+    .name-text{
+      display:inline-block;
+      white-space:nowrap;
+      padding-right:16px;
+      transform:translateX(0);
+      max-width:100%;
+    }
+    .store-pill.scrollable:hover .name-text{
+      animation: name-scroll 8s linear infinite;
+    }
+    @keyframes name-scroll{
+      0%{ transform: translateX(0); }
+      100%{ transform: translateX(-100%); }
+    }
     .skeleton-row{
       height:44px;
       border-radius:12px;
@@ -530,6 +562,19 @@ export class MinhasLojasComponent implements OnInit {
     });
   }
 
+  setScrollable(pill: HTMLElement, name: HTMLElement){
+    if (!pill || !name) return;
+    if (name.scrollWidth > name.clientWidth) {
+      pill.classList.add('scrollable');
+    } else {
+      pill.classList.remove('scrollable');
+    }
+  }
+
+  clearScrollable(pill: HTMLElement){
+    pill?.classList.remove('scrollable');
+  }
+
   abrirCriacao(){
     const data: LojaFormData = { mode: 'create' };
     this.dialog.open(LojaFormDialogComponent, { data, autoFocus: false })
@@ -585,3 +630,13 @@ export class MinhasLojasComponent implements OnInit {
     location.href = '/login';
   }
 }
+
+
+
+
+
+
+
+
+
+
