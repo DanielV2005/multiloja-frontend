@@ -1,0 +1,25 @@
+ .theme-toggle{
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  z-index: 1000;
+}
+
+.theme-toggle:hover{
+  background: rgba(127,127,127,.08);
+}
+
+.theme-toggle .material-symbols-outlined{
+  font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;
+  font-size: 22px;
+}

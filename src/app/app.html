@@ -1,1 +1,11 @@
 <router-outlet></router-outlet>
+<button
+  class="theme-toggle"
+  *ngIf="showHeader"
+  (click)="toggleTheme()"
+  [attr.aria-label]="currentTheme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'"
+  [title]="currentTheme === 'dark' ? 'Tema claro' : 'Tema escuro'">
+  <span class="material-symbols-outlined">
+    {{ currentTheme === 'dark' ? 'light_mode' : 'dark_mode' }}
+  </span>
+</button>
