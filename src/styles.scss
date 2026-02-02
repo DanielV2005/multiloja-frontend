@@ -16,23 +16,24 @@ body {
 
 /* Seus tokens globais (mantive) */
 :root{
-  --bg: #fafafa;
-  --surface: #ffffff;
-  --text: #0f172a;
-  --muted: #5b5f69;
-  --border: #e6e8ec;
+  color-scheme: dark;
+  --bg: #0b1020;
+  --surface: #0f1528;
+  --text: #e6e8ec;
+  --muted: #9aa3b2;
+  --border: #1e2742;
 
-  --primary: #D4AF37;
-  --primary-600: #B4891A;
-  --focus: 0 0 0 3px rgba(212, 175, 55, .35);
+  --primary: #daab1f;
+  --primary-600: #D9B24C;
+  --focus: 0 0 0 3px rgba(240, 210, 122, .35);
 
   --radius: 16px;
-  --shadow: 0 10px 30px rgba(2, 6, 23, 0.06);
+  --shadow: 0 0.10px 15px rgb(255, 234, 0);
 
   /* Scrollbar (padrão do PDV) */
   --scroll-track: rgba(8,12,26,.8);
   --scroll-thumb: rgba(80,110,160,.8);
-  --scroll-thumb-hover: rgba(120,150,200,.9);
+  --scroll-thumb-hover: rgba(120,150,200,.95);
 }
 
 .mat-mdc-dialog-container .mdc-dialog__surface{
@@ -69,22 +70,23 @@ body {
   overflow-x: hidden !important;
 }
 
-@media (prefers-color-scheme: dark){
+@media (prefers-color-scheme: light){
   :root{
-    --bg: #0b1020;
-    --surface: #0f1528;
-    --text: #e6e8ec;
-    --muted: #9aa3b2;
-    --border: #1e2742;
+    color-scheme: light;
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --text: #0f172a;
+    --muted: #5b5f69;
+    --border: #e6e8ec;
 
-    --primary: #daab1f;
-    --primary-600: #D9B24C;
-    --focus: 0 0 0 3px rgba(240, 210, 122, .35);
-    --shadow: 0 0.10px 15px rgb(255, 234, 0);
+    --primary: #D4AF37;
+    --primary-600: #B4891A;
+    --focus: 0 0 0 3px rgba(212, 175, 55, .35);
+    --shadow: 0 10px 30px rgba(2, 6, 23, 0.06);
 
     --scroll-track: rgba(8,12,26,.8);
     --scroll-thumb: rgba(80,110,160,.8);
-    --scroll-thumb-hover: rgba(120,150,200,.95);
+    --scroll-thumb-hover: rgba(120,150,200,.9);
   }
 }
 
@@ -127,3 +129,4 @@ input[type="number"]::-webkit-outer-spin-button{
   -webkit-appearance: none;
   margin: 0;
 }
+
