@@ -35,7 +35,7 @@ export class SetorService {
 
   /** Lista setores ATIVOS */
   listar(filtro: string = ''): Observable<Setor[]> {
-    let params = new HttpParams();
+    let params = new HttpParams().set('_ts', String(Date.now()));
     if (filtro?.trim()) {
       params = params.set('filtro', filtro.trim());
     }
@@ -47,7 +47,7 @@ export class SetorService {
 
   /** Lista setores DESATIVADOS */
   listarDesativados(filtro: string = ''): Observable<Setor[]> {
-    let params = new HttpParams();
+    let params = new HttpParams().set('_ts', String(Date.now()));
     if (filtro?.trim()) {
       params = params.set('filtro', filtro.trim());
     }

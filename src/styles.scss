@@ -105,6 +105,31 @@ body.theme-light{
   overflow-x: hidden !important;
 }
 
+/* Painel de transferencia: remove a "segunda moldura" do container do Material */
+.transfer-dialog-panel .mdc-dialog__surface{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+.transfer-dialog-panel .mat-mdc-dialog-container{
+  overflow: visible !important;
+}
+
+.movimento-dialog-panel .mdc-dialog__surface{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+.movimento-dialog-panel .mat-mdc-dialog-container{
+  overflow: visible !important;
+}
+
 /* Garantir que quando o Material bloqueia o scroll, não apareça barra horizontal */
 .cdk-global-scrollblock {
   overflow-x: hidden !important;

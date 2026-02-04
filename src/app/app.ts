@@ -1,7 +1,8 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
+import { AuthStorageService } from './core/services/auth-storage.service';
 
 
 @Component({
@@ -11,17 +12,55 @@ import { filter } from 'rxjs';
   templateUrl: './app.html',
   styleUrl: './app.scss'
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   private router = inject(Router);
+  private auth = inject(AuthStorageService);
+  private storageListener?: (event: StorageEvent) => void;
   currentTheme: 'dark' | 'light' = 'dark';
-  get showHeader() { return this.router.url !== '/login' && !!localStorage.getItem('token'); }
-  logout() { localStorage.removeItem('token'); this.router.navigateByUrl('/login'); }
+  get showHeader() { return this.router.url !== '/login' && !!this.auth.token; }
+  logout() { this.auth.clear(); this.router.navigateByUrl('/login'); }
 
   ngOnInit(): void {
     this.applyTheme();
     this.router.events
       .pipe(filter(event => event instanceof NavigationEnd))
-      .subscribe(() => this.applyTheme());
+      .subscribe((evt) => {
+        this.applyTheme();
+        const url = this.router.url;
+        if (url === '/login' || url.startsWith('/login?')) {
+          // garante logout quando volta para a tela de login
+          if (this.auth.token) this.auth.clear();
+        }
+      });
+
+    this.storageListener = (event: StorageEvent) => {
+      if (event.key !== 'token' && event.key !== 'auth_user') return;
+      const token = localStorage.getItem('token');
+      const authUser = localStorage.getItem('auth_user');
+
+      // se token foi removido em outra aba, derruba aqui tambem
+      if (!token) {
+        if (this.auth.token) {
+          this.auth.clear();
+          this.router.navigateByUrl('/login');
+        }
+        return;
+      }
+
+      // se mudou de usuario em outra aba, derruba esta sessao
+      const currentUser = this.auth.userId ?? this.auth.email ?? '';
+      if (authUser && currentUser && authUser !== currentUser) {
+        this.auth.clear();
+        this.router.navigateByUrl('/login');
+      }
+    };
+    window.addEventListener('storage', this.storageListener);
+  }
+
+  ngOnDestroy(): void {
+    if (this.storageListener) {
+      window.removeEventListener('storage', this.storageListener);
+    }
   }
 
   private applyTheme(): void {

@@ -9,11 +9,14 @@ interface JwtPayload {
 @Injectable({ providedIn: 'root' })
 export class AuthStorageService {
   private readonly STORAGE_KEY = 'token';
+  private readonly USER_KEY = 'auth_user';
 
   private _token: string | null = null;
   private _exp: number | null = null;
   private _nivelAcesso: number | null = null;
   private _lojaId: number | null = null;
+  private _userId: string | null = null;
+  private _email: string | null = null;
 
   constructor() {
     const stored = localStorage.getItem(this.STORAGE_KEY);
@@ -44,6 +47,16 @@ export class AuthStorageService {
     return this._lojaId;
   }
 
+  /** Usuario logado (sub) */
+  get userId(): string | null {
+    return this._userId;
+  }
+
+  /** Email do usuario, quando presente no token */
+  get email(): string | null {
+    return this._email;
+  }
+
   /** Salva (ou limpa) o token em memoria + localStorage */
   setToken(token: string | null): void {
     if (!token) {
@@ -51,12 +64,21 @@ export class AuthStorageService {
       this._exp = null;
       this._nivelAcesso = null;
       this._lojaId = null;
+      this._userId = null;
+      this._email = null;
       localStorage.removeItem(this.STORAGE_KEY);
+      localStorage.removeItem(this.USER_KEY);
       return;
     }
 
     this.applyToken(token);
     localStorage.setItem(this.STORAGE_KEY, token);
+    if (this._userId || this._email) {
+      const value = this._userId ?? this._email ?? '';
+      if (value) localStorage.setItem(this.USER_KEY, value);
+    } else {
+      localStorage.removeItem(this.USER_KEY);
+    }
   }
 
   /** Limpa completamente os dados de autenticacao */
@@ -71,6 +93,8 @@ export class AuthStorageService {
     this._exp = null;
     this._nivelAcesso = null;
     this._lojaId = null;
+    this._userId = null;
+    this._email = null;
 
     try {
       const [, payloadBase64] = token.split('.');
@@ -81,6 +105,12 @@ export class AuthStorageService {
       const payload = JSON.parse(json) as JwtPayload;
 
       this._exp = typeof payload.exp === 'number' ? payload.exp : null;
+
+      const subRaw = payload['sub'];
+      this._userId = typeof subRaw === 'string' ? subRaw : null;
+
+      const emailRaw = payload['email'];
+      this._email = typeof emailRaw === 'string' ? emailRaw : null;
 
       const nivelRaw = payload['nivelAcesso'];
       const nivel =

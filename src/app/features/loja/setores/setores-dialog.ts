@@ -330,7 +330,8 @@ export class SetoresDialogComponent implements OnInit {
     this.api.listar().subscribe({
       next: (r: Setor[]) => {
         console.log('[SetoresDialog] resposta listar():', r);
-        this.setores = r ?? [];
+        // Protecao de consistencia: mostra apenas ativos nesta tela.
+        this.setores = (r ?? []).filter(s => s.ativo !== false);
       },
       error: (err: any) => {
         console.error('Erro ao carregar setores', err);

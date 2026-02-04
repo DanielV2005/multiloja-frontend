@@ -12,7 +12,13 @@
     "changeOrigin": true
   },
   {
-    "context": ["/api/Produtos", "/api/ProdutosServicos", "/api/ItensVendaveis", "/api/Estoque"],
+    "context": [
+      "/api/Produtos",
+      "/api/ProdutosServicos",
+      "/api/ItensVendaveis",
+      "/api/Estoque",
+      "/api/estoque"
+    ],
     "target": "https://localhost:7015",
     "secure": false,
     "changeOrigin": true

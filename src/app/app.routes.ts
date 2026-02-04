@@ -31,6 +31,12 @@ export const routes: Routes = [
       import('./features/loja/estoque/estoque-page.component').then(m => m.EstoquePageComponent),
   },
   {
+    path: 'loja/:id/estoque/movimentos',
+    canActivate: [authGuard, lojaGuard],
+    loadComponent: () =>
+      import('./features/loja/estoque/estoque-movimentos-page.component').then(m => m.EstoqueMovimentosPageComponent),
+  },
+  {
     path: 'loja/:id/estoque/desativados',
     canActivate: [authGuard, lojaGuard],
     loadComponent: () =>

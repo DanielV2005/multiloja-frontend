@@ -1,6 +1,7 @@
 // src/app/features/loja/estoque/estoque-page.component.ts
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -12,11 +13,13 @@ import {
   ProdutoFormDialogComponent,
   ProdutoFormDialogData,
 } from './produto-form.dialog';
+import { EstoqueMovimentoDialogComponent } from './estoque-movimento.dialog';
+import { EstoqueTransferenciaDialogComponent } from './estoque-transferencia.dialog';
 
 @Component({
   standalone: true,
   selector: 'app-estoque-page',
-  imports: [CommonModule, RouterLink, MatDialogModule],
+  imports: [CommonModule, FormsModule, RouterLink, MatDialogModule],
   template: `
   <section class="page">
     <header class="topbar">
@@ -49,6 +52,15 @@ import {
             <button
               class="btn-secondary"
               type="button"
+              (click)="verMovimentos()"
+            >
+              <span class="material-symbols-outlined">swap_vert</span>
+              <span>Movimentos</span>
+            </button>
+
+            <button
+              class="btn-secondary"
+              type="button"
               (click)="verDesativados()"
             >
               <span class="material-symbols-outlined">history</span>
@@ -62,6 +74,16 @@ import {
           </div>
         </header>
 
+        <div class="search-row">
+          <span class="material-symbols-outlined">search</span>
+          <input
+            type="text"
+            [(ngModel)]="filtro"
+            (ngModelChange)="onFiltroChange($event)"
+            placeholder="Buscar por nome ou codigo de barras..."
+          />
+        </div>
+
         <!-- LOADING -->
         <div *ngIf="loading" class="loading">
           <div class="spinner"></div>
@@ -69,12 +91,12 @@ import {
         </div>
 
         <!-- EMPTY -->
-        <p *ngIf="!loading && produtos.length === 0" class="empty">
+        <p *ngIf="!loading && produtosFiltrados.length === 0" class="empty">
           Nenhum produto cadastrado ainda.
         </p>
 
         <!-- TABLE -->
-        <div *ngIf="!loading && produtos.length > 0" class="table">
+        <div *ngIf="!loading && produtosFiltrados.length > 0" class="table">
           <div class="table-header">
             <span class="th col-produto">Produto</span>
             <span class="th col-numero">Qtd.</span>
@@ -87,7 +109,7 @@ import {
 
           <div
             class="table-row"
-            *ngFor="let p of produtos; trackBy: trackById"
+            *ngFor="let p of produtosFiltrados; trackBy: trackById"
           >
             <!-- produto + código -->
             <div class="cell col-produto">
@@ -131,6 +153,26 @@ import {
               <button
                 type="button"
                 class="icon-btn"
+                title="Movimentar estoque"
+                (click)="movimentarEstoque(p)"
+                [disabled]="loading || !p.id || desativandoId === p.id"
+              >
+                <span class="material-symbols-outlined">swap_vert</span>
+              </button>
+
+              <button
+                type="button"
+                class="icon-btn"
+                title="Transferir estoque"
+                (click)="transferirEstoque(p)"
+                [disabled]="loading || !p.id || desativandoId === p.id"
+              >
+                <span class="material-symbols-outlined">storefront</span>
+              </button>
+
+              <button
+                type="button"
+                class="icon-btn"
                 title="Desativar produto"
                 (click)="desativarProduto(p)"
                 [disabled]="loading || !p.id || desativandoId === p.id"
@@ -138,14 +180,7 @@ import {
                 <span class="material-symbols-outlined">delete</span>
               </button>
 
-              <button
-                type="button"
-                class="icon-btn"
-                title="Reativar (apenas na lista de desativados)"
-                disabled
-              >
-                <span class="material-symbols-outlined">history</span>
-              </button>
+              <!-- botão de reativar fica apenas na lista de desativados -->
             </span>
           </div>
         </div>
@@ -220,6 +255,30 @@ import {
     display:flex;
     gap:10px;
     align-items:center;
+  }
+
+  .search-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid var(--border);
+    border-radius:12px;
+    background:#060b18;
+    padding:0 10px;
+    height:40px;
+    margin-bottom:10px;
+  }
+  .search-row input{
+    flex:1;
+    background:transparent;
+    border:none;
+    color:var(--text);
+    outline:none;
+    font-size:.95rem;
+  }
+  .search-row .material-symbols-outlined{
+    color:var(--muted);
+    font-size:20px;
   }
 
   .btn-gold{
@@ -441,7 +500,10 @@ export class EstoquePageComponent implements OnInit {
   lojaId = 0;
   loja: Loja | null = null;
   produtos: Produto[] = [];
+  filtro = '';
+  filtroAplicado = '';
   loading = false;
+  private filtroTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ✅ loading por linha (para desativar sem derrubar a tela toda)
   desativandoId: number | null = null;
@@ -517,6 +579,24 @@ export class EstoquePageComponent implements OnInit {
     return item.id;
   }
 
+  get produtosFiltrados(): Produto[] {
+    const f = this.filtroAplicado.trim().toLowerCase();
+    if (!f) return this.produtos;
+    return this.produtos.filter(p => {
+      const nome = (p.nome ?? '').toLowerCase();
+      const codigo = (p.codigoBarra ?? '').toLowerCase();
+      return nome.includes(f) || codigo.includes(f);
+    });
+  }
+
+  onFiltroChange(value: string): void {
+    this.filtro = value ?? '';
+    if (this.filtroTimer) clearTimeout(this.filtroTimer);
+    this.filtroTimer = setTimeout(() => {
+      this.filtroAplicado = this.filtro;
+    }, 200);
+  }
+
   nomeSetor(p: Produto): string {
     if (!p.setorFilhoId) return '—';
     return this.setoresPorId.get(p.setorFilhoId) ?? `#${p.setorFilhoId}`;
@@ -539,6 +619,45 @@ export class EstoquePageComponent implements OnInit {
       if (ok) {
         this.carregarDados();
       }
+    });
+  }
+
+  movimentarEstoque(produto: Produto): void {
+    if (!produto?.id) return;
+
+    this.dialog.open(EstoqueMovimentoDialogComponent, {
+      autoFocus: false,
+      width: '1000px',
+      maxWidth: '96vw',
+      panelClass: 'movimento-dialog-panel',
+      data: { produto },
+    })
+    .afterClosed()
+    .subscribe((res?: { novaQuantidade?: number }) => {
+      if (!res || typeof res.novaQuantidade !== 'number') return;
+      const idx = this.produtos.findIndex(p => p.id === produto.id);
+      if (idx >= 0) {
+        this.produtos[idx] = {
+          ...this.produtos[idx],
+          quantidade: res.novaQuantidade,
+        };
+      }
+    });
+  }
+
+  transferirEstoque(produto: Produto): void {
+    if (!produto?.id) return;
+
+    this.dialog.open(EstoqueTransferenciaDialogComponent, {
+      autoFocus: false,
+      width: '1100px',
+      maxWidth: '96vw',
+      panelClass: 'transfer-dialog-panel',
+      data: { produto, lojaId: this.lojaId },
+    })
+    .afterClosed()
+    .subscribe((ok?: boolean) => {
+      if (ok) this.carregarDados();
     });
   }
 
@@ -584,5 +703,9 @@ export class EstoquePageComponent implements OnInit {
 
   verDesativados(): void {
     this.router.navigate(['/loja', this.lojaId, 'estoque', 'desativados']);
+  }
+
+  verMovimentos(): void {
+    this.router.navigate(['/loja', this.lojaId, 'estoque', 'movimentos']);
   }
 }

@@ -136,6 +136,11 @@ export class LoginComponent {
     senha: ['', Validators.required],
   });
 
+  ngOnInit(): void {
+    // sempre limpa token ao entrar na tela de login
+    if (this.authStorage.token) this.authStorage.clear();
+  }
+
   submit() {
     if (this.form.invalid || this.loading) return;
     this.errorMessage = '';

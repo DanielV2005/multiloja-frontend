@@ -1,5 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
@@ -18,7 +19,7 @@ import {
 @Component({
   standalone: true,
   selector: 'app-servicos-page',
-  imports: [CommonModule, RouterLink, MatDialogModule],
+  imports: [CommonModule, FormsModule, RouterLink, MatDialogModule],
   template: `
   <section class="page">
     <header class="topbar">
@@ -58,23 +59,33 @@ import {
           </div>
         </header>
 
+        <div class="search-row">
+          <span class="material-symbols-outlined">search</span>
+          <input
+            type="text"
+            [(ngModel)]="filtro"
+            (ngModelChange)="onFiltroChange($event)"
+            placeholder="Buscar servico por nome..."
+          />
+        </div>
+
         <div *ngIf="loading" class="loading">
           <div class="spinner"></div>
           <span>Carregando serviços...</span>
         </div>
 
-        <p *ngIf="!loading && servicos.length === 0" class="empty">
+        <p *ngIf="!loading && servicosFiltrados.length === 0" class="empty">
           Nenhum serviço cadastrado ainda.
         </p>
 
-        <div *ngIf="!loading && servicos.length > 0" class="table">
+        <div *ngIf="!loading && servicosFiltrados.length > 0" class="table">
           <div class="table-header">
             <span class="th col-servico">Serviço</span>
             <span class="th col-numero">Preço venda</span>
             <span class="th col-acoes">Ações</span>
           </div>
 
-          <div class="table-row" *ngFor="let s of servicos; trackBy: trackById">
+          <div class="table-row" *ngFor="let s of servicosFiltrados; trackBy: trackById">
             <div class="cell col-servico">
               <div class="prod-name">{{ s.nome }}</div>
             </div>
@@ -134,6 +145,30 @@ import {
     }
 
     .header-actions{ display:flex; gap:10px; align-items:center; }
+
+    .search-row{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#060b18;
+      padding:0 10px;
+      height:40px;
+      margin-bottom:10px;
+    }
+    .search-row input{
+      flex:1;
+      background:transparent;
+      border:none;
+      color:var(--text);
+      outline:none;
+      font-size:.95rem;
+    }
+    .search-row .material-symbols-outlined{
+      color:var(--muted);
+      font-size:20px;
+    }
 
     .btn-gold{
       display:inline-flex; align-items:center; gap:6px;
@@ -243,7 +278,10 @@ export class ServicosPageComponent implements OnInit {
   loja: Loja | null = null;
 
   servicos: ProdutoServico[] = [];
+  filtro = '';
+  filtroAplicado = '';
   loading = false;
+  private filtroTimer: ReturnType<typeof setTimeout> | null = null;
 
   ngOnInit(): void {
     this.lojaId = Number(this.route.snapshot.paramMap.get('id')) || 0;
@@ -294,6 +332,20 @@ export class ServicosPageComponent implements OnInit {
 
   trackById(_: number, item: ProdutoServico): number | undefined {
     return item.id;
+  }
+
+  get servicosFiltrados(): ProdutoServico[] {
+    const f = this.filtroAplicado.trim().toLowerCase();
+    if (!f) return this.servicos;
+    return this.servicos.filter(s => (s.nome ?? '').toLowerCase().includes(f));
+  }
+
+  onFiltroChange(value: string): void {
+    this.filtro = value ?? '';
+    if (this.filtroTimer) clearTimeout(this.filtroTimer);
+    this.filtroTimer = setTimeout(() => {
+      this.filtroAplicado = this.filtro;
+    }, 200);
   }
 
   verDesativados(): void {

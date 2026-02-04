@@ -205,7 +205,8 @@ export class SetoresDesativadosDialogComponent implements OnInit {
 
   private carregar() {
     this.api.listarDesativados().subscribe({
-      next: (r: Setor[]) => this.setores = r ?? [],
+      // Protecao de consistencia: mostra apenas desativados nesta tela.
+      next: (r: Setor[]) => this.setores = (r ?? []).filter(s => s.ativo === false),
       error: (err: any) => {
         console.error('Erro ao carregar setores desativados', err);
         this.setores = [];
