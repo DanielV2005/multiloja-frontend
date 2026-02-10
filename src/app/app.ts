@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { NavigationEnd, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthStorageService } from './core/services/auth-storage.service';
 
@@ -23,10 +23,10 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.applyTheme();
     this.router.events
-      .pipe(filter(event => event instanceof NavigationEnd))
-      .subscribe((evt) => {
+      .pipe(filter(event => event instanceof NavigationStart || event instanceof NavigationEnd))
+      .subscribe((event) => {
         this.applyTheme();
-        const url = this.router.url;
+        const url = event instanceof NavigationStart ? event.url : this.router.url;
         if (url === '/login' || url.startsWith('/login?')) {
           // garante logout quando volta para a tela de login
           if (this.auth.token) this.auth.clear();

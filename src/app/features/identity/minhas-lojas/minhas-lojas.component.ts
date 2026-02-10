@@ -1,4 +1,4 @@
-// src/app/features/identity/minhas-lojas/minhas-lojas.component.ts
+ï»¿// src/app/features/identity/minhas-lojas/minhas-lojas.component.ts
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -9,6 +9,7 @@ import {
   Loja,
   NovaLoja
 } from '../../../core/services/usuario.service';
+import { AuthStorageService } from '../../../core/services/auth-storage.service';
 
 import {
   LojaFormDialogComponent,
@@ -96,7 +97,7 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
           Nenhuma loja encontrada.
         </p>
 
-        <!-- rodapé com botões -->
+        <!-- rodapï¿½ com botï¿½es -->
         <div class="create">
           <button
             class="gold icon-only"
@@ -116,21 +117,21 @@ import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
         </div>
       </aside>
 
-      <!-- coluna da direita (gráfico geral) -->
+      <!-- coluna da direita (grï¿½fico geral) -->
       <main class="content">
         <div class="card chart">
           <header class="card__header">
             <h3>Lucros Totais</h3>
-            <small class="muted">todas as lojas — em breve</small>
+            <small class="muted">todas as lojas ï¿½ em breve</small>
           </header>
 
           <div class="chart-placeholder"
                role="img"
-               aria-label="Gráfico de lucros (em breve)">
+               aria-label="Grï¿½fico de lucros (em breve)">
             <div class="spark"></div>
             <div class="grid"><div *ngFor="let _ of gridCols"></div></div>
             <div class="legend muted">
-              Área reservada para gráfico (Chart.js/Recharts/NGX-Charts)
+              ï¿½rea reservada para grï¿½fico (Chart.js/Recharts/NGX-Charts)
             </div>
           </div>
         </div>
@@ -491,6 +492,7 @@ export class MinhasLojasComponent implements OnInit {
   private api    = inject(UsuarioService);
   private dialog = inject(MatDialog);
   private router = inject(Router);
+  private auth   = inject(AuthStorageService);
 
   lojas: Loja[] = [];
   loading = true;
@@ -520,9 +522,9 @@ export class MinhasLojasComponent implements OnInit {
         this.loading = false;
 
         if (err?.status === 401) {
-          alert('Sessão expirada. Faça login novamente.');
-          localStorage.removeItem('token');
-          location.href = '/login';
+          alert('SessÃ£o expirada. FaÃ§a login novamente.');
+          this.auth.clear();
+          this.router.navigateByUrl('/login');
         }
       }
     });
@@ -534,20 +536,20 @@ export class MinhasLojasComponent implements OnInit {
     return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase();
   }
 
-  // Só marca seleção no backend e visualmente
+  // Sï¿½ marca seleï¿½ï¿½o no backend e visualmente
   selecionar(l: Loja){
     if (l?.id == null || Number.isNaN(+l.id)) {
-      console.warn('Loja sem id válido:', l);
+      console.warn('Loja sem id vï¿½lido:', l);
       return;
     }
 
     this.selectedId = l.id;
     this.api.selecionarLoja(l.id).subscribe({
-      error: err => console.warn('Falha ao registrar seleção da loja (mas ignoro):', err)
+      error: err => console.warn('Falha ao registrar seleï¿½ï¿½o da loja (mas ignoro):', err)
     });
   }
 
-  // Marca seleção E navega para o painel
+  // Marca seleï¿½ï¿½o E navega para o painel
   entrarNaLoja(l: Loja){
     if (l?.id == null || Number.isNaN(+l.id)) return;
 
@@ -621,13 +623,13 @@ export class MinhasLojasComponent implements OnInit {
         this.lojas = this.lojas.filter(x => x.id !== l.id);
         if (this.selectedId === l.id) this.selectedId = null;
       },
-      error: _ => alert('Não foi possível desativar a loja.')
+      error: _ => alert('NÃ£o foi possÃ­vel desativar a loja.')
     });
   }
 
   logout(){
-    localStorage.removeItem('token');
-    location.href = '/login';
+    this.auth.clear();
+    this.router.navigateByUrl('/login');
   }
 }
 
