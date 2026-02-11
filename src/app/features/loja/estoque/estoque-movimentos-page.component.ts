@@ -1,8 +1,10 @@
 // src/app/features/loja/estoque/estoque-movimentos-page.component.ts
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 
 import {
   EstoqueMovimentoDto,
@@ -45,19 +47,27 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
             </small>
           </div>
 
-          <form class="filters" [formGroup]="form" (ngSubmit)="buscar()">
-            <select formControlName="produtoId">
-              <option value="">Todos os produtos</option>
-              <option *ngFor="let p of produtos" [value]="p.id">
-                {{ p.nome }}
-              </option>
-            </select>
+          <form class="filters" [formGroup]="form" (ngSubmit)="buscar(true)">
+            <div class="field">
+              <input
+                type="text"
+                formControlName="produtoNome"
+                list="produtos-list"
+                placeholder="Todos os produtos"
+                (input)="onProdutoInput()"
+              />
+              <datalist id="produtos-list">
+                <option *ngFor="let p of produtos" [value]="p.nome"></option>
+              </datalist>
+            </div>
 
-            <select formControlName="take">
-              <option [value]="50">50</option>
-              <option [value]="100">100</option>
-              <option [value]="200">200</option>
-            </select>
+            <div class="field">
+              <input type="date" formControlName="dataInicio" />
+            </div>
+            <span class="range-sep">—</span>
+            <div class="field">
+              <input type="date" formControlName="dataFim" />
+            </div>
 
             <button class="btn-secondary" type="submit">Atualizar</button>
           </form>
@@ -72,7 +82,8 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
           Nenhum movimento encontrado.
         </p>
 
-        <div *ngIf="!loading && movimentos.length > 0" class="table">
+        <div *ngIf="!loading && movimentos.length > 0" class="table-wrap" (scroll)="onTableScroll($event)">
+          <div class="table">
           <div class="table-header">
             <span class="th col-data">Data</span>
             <span class="th col-produto">Produto</span>
@@ -98,6 +109,11 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
               <span *ngIf="m.referenciaTipo">{{ referenciaLabel(m.referenciaTipo) }}</span>
               <span class="muted" *ngIf="!m.referenciaTipo">—</span>
             </span>
+          </div>
+          </div>
+          <div class="loading-more" *ngIf="loadingMore">
+            <div class="spinner"></div>
+            <span>Carregando mais...</span>
           </div>
         </div>
       </div>
@@ -166,7 +182,14 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
       display:flex;
       align-items:center;
       gap:8px;
+      flex-wrap:wrap;
     }
+    .field{
+      display:flex;
+      align-items:center;
+    }
+    input[type="text"],
+    input[type="date"],
     select{
       height:36px;
       border-radius:10px;
@@ -176,6 +199,8 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
       padding: 0 8px;
       outline: none;
     }
+    input[type="text"]{ min-width: 220px; }
+    .range-sep{ color: var(--muted); padding: 0 4px; }
     select:focus{ border-color: var(--primary); box-shadow: var(--focus); }
     .btn-secondary{
       height:36px;
@@ -211,10 +236,16 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
 
     .empty{ margin:18px 4px 6px; font-size:.9rem; color:var(--muted); }
 
-    .table{
+    .table-wrap{
       margin-top:10px;
       border-radius:12px;
       border:1px solid var(--border);
+      overflow:auto;
+      max-height:60vh;
+      background:#050814;
+    }
+    .table{
+      border-radius:12px;
       overflow:hidden;
       background:#050814;
       display:table;
@@ -258,26 +289,41 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
     .pill.in{ color: #22c55e; border-color: rgba(34,197,94,.4); }
     .pill.out{ color: #ef4444; border-color: rgba(239,68,68,.4); }
     .muted{ color:var(--muted); }
+
+    .loading-more{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:10px 12px;
+      border-top:1px solid rgba(148,163,184,.25);
+    }
   `],
 })
-export class EstoqueMovimentosPageComponent implements OnInit {
+export class EstoqueMovimentosPageComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private usuarioService = inject(UsuarioService);
   private produtoService = inject(ProdutoService);
   private fb = inject(FormBuilder);
+  private formSub?: Subscription;
 
   lojaId = 0;
   loja: Loja | null = null;
   produtos: Produto[] = [];
   movimentos: EstoqueMovimentoDto[] = [];
   loading = false;
+  loadingMore = false;
+  hasMore = true;
+  skip = 0;
+  readonly pageSize = 100;
+  private selectedProdutoId?: number;
 
   EstoqueMovimentoTipo = EstoqueMovimentoTipo;
 
   form = this.fb.group({
-    produtoId: [''],
-    take: [100],
+    produtoNome: [''],
+    dataInicio: [''],
+    dataFim: [''],
   });
 
   ngOnInit(): void {
@@ -298,26 +344,78 @@ export class EstoqueMovimentosPageComponent implements OnInit {
       error: () => (this.produtos = []),
     });
 
-    this.buscar();
+    this.buscar(true);
+
+    this.formSub = this.form.valueChanges
+      .pipe(
+        debounceTime(350),
+        distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))
+      )
+      .subscribe(() => {
+        this.onProdutoInput();
+        this.buscar(true);
+      });
   }
 
-  buscar(): void {
-    const produtoIdRaw = this.form.value.produtoId;
-    const produtoId = produtoIdRaw ? Number(produtoIdRaw) : undefined;
-    const take = Number(this.form.value.take ?? 100);
+  ngOnDestroy(): void {
+    this.formSub?.unsubscribe();
+  }
 
-    this.loading = true;
-    this.produtoService.listarMovimentos(produtoId, take).subscribe({
-      next: itens => {
-        this.movimentos = itens ?? [];
-        this.loading = false;
-      },
-      error: err => {
-        console.error('[Movimentos] erro ao carregar', err);
-        this.movimentos = [];
-        this.loading = false;
-      },
-    });
+  onProdutoInput(): void {
+    const nome = (this.form.value.produtoNome ?? '').trim();
+    if (!nome) {
+      this.selectedProdutoId = undefined;
+      return;
+    }
+    const lower = nome.toLowerCase();
+    const exact = this.produtos.find(p => p.nome.toLowerCase() === lower);
+    if (exact) {
+      this.selectedProdutoId = exact.id;
+      return;
+    }
+    const matches = this.produtos.filter(p => p.nome.toLowerCase().includes(lower));
+    this.selectedProdutoId = matches.length === 1 ? matches[0].id : undefined;
+  }
+
+  buscar(reset = false): void {
+    if (reset) {
+      this.movimentos = [];
+      this.skip = 0;
+      this.hasMore = true;
+    }
+    if (!this.hasMore || this.loadingMore) return;
+
+    const dataInicio = this.form.value.dataInicio || undefined;
+    const dataFim = this.form.value.dataFim || undefined;
+    const produtoId = this.selectedProdutoId;
+
+    this.loading = this.skip === 0;
+    this.loadingMore = this.skip > 0;
+
+    this.produtoService
+      .listarMovimentos(produtoId, this.pageSize, this.skip, dataInicio, dataFim)
+      .subscribe({
+        next: itens => {
+          const novos = itens ?? [];
+          this.movimentos = this.skip === 0 ? novos : [...this.movimentos, ...novos];
+          this.skip += novos.length;
+          this.hasMore = novos.length === this.pageSize;
+          this.loading = false;
+          this.loadingMore = false;
+        },
+        error: err => {
+          console.error('[Movimentos] erro ao carregar', err);
+          if (this.skip === 0) this.movimentos = [];
+          this.loading = false;
+          this.loadingMore = false;
+        },
+      });
+  }
+
+  onTableScroll(event: Event): void {
+    const el = event.target as HTMLElement;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
+    if (nearBottom) this.buscar(false);
   }
 
   trackById(_: number, item: EstoqueMovimentoDto): number {

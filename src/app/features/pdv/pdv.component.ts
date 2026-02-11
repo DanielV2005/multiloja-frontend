@@ -113,7 +113,7 @@ interface DraftPayload {
           />
           <div class="qty">
             <label for="qty">Qtd</label>
-            <input id="qty" type="number" min="1" [(ngModel)]="quantidadePadrao" class="pdv-focus-search" />
+            <input id="qty" type="text" inputmode="decimal" [(ngModel)]="quantidadePadrao" class="pdv-focus-search" />
           </div>
         </div>
 
@@ -173,10 +173,10 @@ interface DraftPayload {
               <div class="qty-editor">
                 <button type="button" class="qty-btn" (click)="alterarQuantidade(item, -1)">-</button>
                 <input
-                  type="number"
-                  min="1"
+                  type="text"
+                  inputmode="decimal"
                   class="pdv-focus-cart"
-                  [ngModel]="item.quantity"
+                  [ngModel]="displayQuantity(item)"
                   #qtyInput
                   (ngModelChange)="alterarQuantidadeDireta(item, $event, qtyInput)"
                   (blur)="onQuantidadeBlur(item)"
@@ -251,7 +251,7 @@ interface DraftPayload {
                     <option [ngValue]="4">Cr&#233;dito</option>
                     <option [ngValue]="5">Voucher</option>
                   </select>
-                  <input type="number" min="0" step="0.01" [(ngModel)]="p.amount" [disabled]="!p.editing" class="pdv-focus-summary" />
+                  <input type="text" inputmode="decimal" [(ngModel)]="p.amount" [disabled]="!p.editing" class="pdv-focus-summary" />
                   <input type="text" placeholder="Refer&#234;ncia" [(ngModel)]="p.refCode" [disabled]="!p.editing" class="pdv-focus-summary" />
                 </div>
                 <div class="payment-actions">
@@ -270,18 +270,17 @@ interface DraftPayload {
                 <option [ngValue]="4">Cr&#233;dito</option>
                 <option [ngValue]="5">Voucher</option>
               </select>
-              <input type="number" min="0" step="0.01" placeholder="Valor" [(ngModel)]="novoPagamento.valor" class="pdv-focus-summary" />
+              <input type="text" inputmode="decimal" placeholder="Valor" [(ngModel)]="novoPagamento.valor" class="pdv-focus-summary" />
               <input type="text" placeholder="Refer&#234;ncia (opcional)" [(ngModel)]="novoPagamento.ref" class="pdv-focus-summary" />
-              <button class="btn btn-outline" type="button" (click)="adicionarPagamento()">Adicionar</button>
+              <button class="btn btn-outline" type="button" (click)="adicionarPagamento()" [disabled]="valorRestanteVirtual <= 0">Adicionar</button>
             </div>
           </div>
 
             <div class="cash-helper">
               <div class="cash-row">
                 <input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  type="text"
+                  inputmode="decimal"
                   placeholder="Dinheiro recebido (c&#233;dulas)"
                   class="pdv-focus-summary"
                   [(ngModel)]="cashReceived"
@@ -301,7 +300,13 @@ interface DraftPayload {
 
         <div class="actions">
           <button class="btn btn-outline" type="button" [disabled]="hasQuantityErrors" (click)="cancelarVenda()">Cancelar venda</button>
-          <button class="btn btn-gold" type="button" [disabled]="!currentSale || hasQuantityErrors" (click)="finalizarVenda()">Finalizar</button>
+          <button
+            class="btn btn-gold"
+            type="button"
+            [disabled]="!currentSale || hasInvalidQuantities"
+            [class.btn-disabled]="!currentSale || hasInvalidQuantities"
+            (click)="finalizarVenda()"
+          >Finalizar</button>
         </div>
       </section>
     </main>
@@ -461,6 +466,13 @@ interface DraftPayload {
         radial-gradient(120% 100% at 50% -40%, rgba(255,255,255,.20), transparent 60%),
         linear-gradient(180deg,#F5DF7B 0%, var(--primary) 55%, var(--primary-600) 100%);
       box-shadow:0 8px 20px rgba(218,171,31,.45), inset 0 -2px 0 rgba(0,0,0,.18);
+    }
+    .btn-disabled{
+      background: #3b3f46 !important;
+      border-color: #2f333a !important;
+      color: #b7bcc6 !important;
+      cursor: not-allowed !important;
+      box-shadow: none !important;
     }
 
     .layout{
@@ -927,7 +939,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private readonly checkoutLockMs = 15000;
   private quantityTimers = new Map<string, number>();
   private quantityErrors = new Map<string, string>();
-  private quantityPending = new Map<string, number>();
+  private quantityPending = new Map<string, number | string | null>();
   private stockByProductId = new Map<number, number>();
 
   menuOpen = false;
@@ -1061,7 +1073,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   get valorPagoVirtual(): number {
     return this.currentPayments
       .filter(p => p.method !== 1)
-      .reduce((sum, p) => sum + p.amount, 0);
+      .reduce((sum, p) => sum + this.parseDecimal(p.amount), 0);
   }
 
   get valorRestanteVirtual(): number {
@@ -1069,14 +1081,32 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     return Math.max(total - this.valorPagoVirtual, 0);
   }
 
+  private getRemainingVirtual(excludeId?: string): number {
+    const total = this.totalValue;
+    const sum = this.currentPayments
+      .filter(p => p.method !== 1 && p.id !== excludeId)
+      .reduce((acc, p) => acc + this.parseDecimal(p.amount), 0);
+    return Math.max(total - sum, 0);
+  }
+
   get trocoValue(): number {
-    const recebido = Number(this.cashReceived ?? 0);
+    const recebido = this.parseDecimal(this.cashReceived ?? 0);
     if (!Number.isFinite(recebido) || recebido <= 0) return 0;
     return Math.max(recebido - this.valorRestanteVirtual, 0);
   }
 
   get hasQuantityErrors(): boolean {
     return this.quantityErrors.size > 0;
+  }
+
+  get hasInvalidQuantities(): boolean {
+    if (this.quantityErrors.size > 0) return true;
+    for (const value of this.quantityPending.values()) {
+      if (value == null) return true;
+      const parsed = this.parseDecimal(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) return true;
+    }
+    return false;
   }
 
   setTipoFiltro(tipo: 'ALL' | 'PRODUTO' | 'SERVICO'): void {
@@ -1235,6 +1265,14 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     return this.quantityErrors.get(item.key) ?? null;
   }
 
+  displayQuantity(item: CartItem): number | string {
+    if (this.quantityPending.has(item.key)) {
+      const pending = this.quantityPending.get(item.key);
+      return pending ?? '';
+    }
+    return item.quantity ?? '';
+  }
+
   adicionarItem(item: ItemVendavelDto, fromBarcode: boolean = false): void {
     if (!this.currentSale) {
       if (this.isDraftActive()) {
@@ -1245,7 +1283,10 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       return;
     }
 
-    const qty = Math.max(1, Number(this.quantidadePadrao || 1));
+    const qty = this.parseDecimal(this.quantidadePadrao || 1);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return;
+    }
 
     if (item.tipo === 'PRODUTO' && item.estoque != null) {
       const disponivel = this.getAvailableStock(item.id, item.estoque);
@@ -1342,8 +1383,16 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   adicionarPagamento(): void {
     if (this.currentDraftId) {
-      const amountDraft = Number(this.novoPagamento.valor ?? 0);
-      if (amountDraft <= 0) return;
+      const amountDraft = this.parseDecimal(this.novoPagamento.valor ?? 0);
+      if (!Number.isFinite(amountDraft) || amountDraft <= 0) return;
+      if (this.getRemainingVirtual() <= 0) {
+        alert('Nao ha valor restante para outras formas de pagamento.');
+        return;
+      }
+      if (amountDraft > this.getRemainingVirtual()) {
+        alert('O valor informado ultrapassa o total restante.');
+        return;
+      }
       const entryDraft: PaymentEntry = {
         id: this.newPaymentId(),
         method: Number(this.novoPagamento.metodo),
@@ -1363,8 +1412,16 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
     if (!this.currentSale) return;
 
-    const amount = Number(this.novoPagamento.valor ?? 0);
-    if (amount <= 0) return;
+    const amount = this.parseDecimal(this.novoPagamento.valor ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (this.getRemainingVirtual() <= 0) {
+      alert('Nao ha valor restante para outras formas de pagamento.');
+      return;
+    }
+    if (amount > this.getRemainingVirtual()) {
+      alert('O valor informado ultrapassa o total restante.');
+      return;
+    }
 
     const entry: PaymentEntry = {
       id: this.newPaymentId(),
@@ -1513,10 +1570,17 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   salvarPagamento(p: PaymentEntry): void {
-    if (!p.amount || p.amount <= 0) {
+    const amount = this.parseDecimal(p.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
       alert('Informe um valor maior que zero.');
       return;
     }
+    const restante = this.getRemainingVirtual(p.id);
+    if (amount > restante) {
+      alert('O valor informado ultrapassa o total restante.');
+      return;
+    }
+    p.amount = amount;
     p.editing = false;
     this.paymentDrafts.delete(p.id);
     if (this.currentDraftId) {
@@ -1980,7 +2044,10 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private addItemToDraft(item: ItemVendavelDto, fromBarcode: boolean): void {
     if (!this.currentDraftId) return;
 
-    const qty = Math.max(1, Number(this.quantidadePadrao || 1));
+    const qty = this.parseDecimal(this.quantidadePadrao || 1);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return;
+    }
     const key = this.toDraftKey(this.currentDraftId);
     const cart = this.cartBySale.get(key) ?? [];
     const tipoKey = String(item.tipo).toUpperCase();
@@ -2177,15 +2244,23 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   alterarQuantidadeDireta(item: CartItem, value: number | string, inputEl?: HTMLInputElement): void {
     if (value === '' || value === null || value === undefined) {
       this.setQuantityError(item, 'Quantidade obrigatoria.');
+      this.quantityPending.set(item.key, null);
       return;
     }
-    const alvo = Number(value);
+    if (typeof value === 'string' && this.isPartialDecimal(value)) {
+      this.clearQuantityError(item);
+      this.quantityPending.set(item.key, value);
+      return;
+    }
+    const alvo = this.parseDecimal(value);
     if (!Number.isFinite(alvo)) {
       this.setQuantityError(item, 'Quantidade invalida.');
+      this.quantityPending.set(item.key, null);
       return;
     }
-    if (alvo < 0) {
+    if (alvo <= 0) {
       this.setQuantityError(item, 'Quantidade invalida.');
+      this.quantityPending.set(item.key, alvo);
       return;
     }
     this.clearQuantityError(item);
@@ -2206,7 +2281,10 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       this.quantityTimers.delete(item.key);
       const pending = this.quantityPending.get(item.key);
       if (pending != null) {
-        this.aplicarQuantidade(item, pending);
+        const parsed = this.parseDecimal(pending);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          this.aplicarQuantidade(item, parsed);
+        }
       }
     }
   }
@@ -2254,6 +2332,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
         } else {
           item.quantity = novaQuantidade;
         }
+        this.quantityPending.delete(item.key);
         if (item.tipo === 'PRODUTO') {
           this.applyStockDelta(item.produtoId, delta);
         }
@@ -2261,7 +2340,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       },
       error: err => {
         console.error('[PDV] erro ao atualizar quantidade', err);
-        alert(err?.error?.message ?? 'Nao foi possivel atualizar a quantidade.');
+        this.setQuantityError(item, err?.error?.message ?? 'Nao foi possivel atualizar a quantidade.');
       }
     });
   }
@@ -2274,7 +2353,6 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     }
     const timer = window.setTimeout(() => {
       this.quantityTimers.delete(key);
-      this.quantityPending.delete(key);
       this.aplicarQuantidade(item, value);
     }, 250);
     this.quantityTimers.set(key, timer);
@@ -2287,7 +2365,6 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       clearTimeout(timer);
       this.quantityTimers.delete(item.key);
     }
-    this.quantityPending.delete(item.key);
   }
 
   private clearQuantityError(item: CartItem): void {
@@ -2357,6 +2434,19 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     }
     this.persistDraftState();
     this.applyDraftToView();
+  }
+
+  private parseDecimal(value: unknown): number {
+    if (typeof value === 'number') return value;
+    const raw = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.');
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : NaN;
+  }
+
+  private isPartialDecimal(value: string): boolean {
+    const raw = value.trim();
+    if (!raw) return true;
+    return /^[0-9]+([,.])?$/.test(raw);
   }
 
   fmtMoney(value: number | string | null | undefined): string {

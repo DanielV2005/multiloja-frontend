@@ -2,8 +2,10 @@
 import { Component, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
+  AbstractControl,
   FormBuilder,
   FormGroup,
+  ValidationErrors,
   Validators,
   ReactiveFormsModule,
 } from '@angular/forms';
@@ -59,7 +61,12 @@ export interface EstoqueTransferenciaDialogData {
 
         <div class="field">
           <label for="quantidade">Quantidade a transferir</label>
-          <input id="quantidade" type="number" min="1" formControlName="quantidade" />
+          <input
+            id="quantidade"
+            type="text"
+            inputmode="decimal"
+            formControlName="quantidade"
+          />
           <small class="error" *ngIf="quantidadeCtrl?.touched && quantidadeCtrl?.invalid">
             Informe uma quantidade valida.
           </small>
@@ -137,7 +144,9 @@ export interface EstoqueTransferenciaDialogData {
               >
                 {{ p.nome }}
               </button>
-              <div class="combo-empty" *ngIf="produtosDestinoFiltradosPorTexto.length === 0">Nenhum produto encontrado.</div>
+              <div class="combo-empty" *ngIf="produtosDestinoFiltradosPorTexto.length === 0">
+                {{ produtosDestinoCompativeis.length === 0 ? 'Nenhum produto compatível na loja destino.' : 'Nenhum produto encontrado.' }}
+              </div>
             </div>
           </div>
         </div>
@@ -371,7 +380,7 @@ export class EstoqueTransferenciaDialogComponent {
     this.quantidadeAtual = data.produto.quantidade ?? 0;
     this.lojaAtualId = data.lojaId;
     this.form = this.fb.group({
-      quantidade: [1, [Validators.required, Validators.min(1)]],
+      quantidade: [1, [Validators.required, this.decimalMin(0.01)]],
       lojaDestinoId: [null, [Validators.required, Validators.min(1)]],
       produtoDestinoId: [null, [Validators.required, Validators.min(1)]],
       observacao: [''],
@@ -420,8 +429,13 @@ export class EstoqueTransferenciaDialogComponent {
 
   get produtosDestinoFiltradosPorTexto(): Produto[] {
     const f = this.produtoDestinoTexto.trim().toLowerCase();
-    if (!f) return this.produtosDestino;
-    return this.produtosDestino.filter(p => (p.nome ?? '').toLowerCase().includes(f));
+    const base = this.produtosDestinoCompativeis;
+    if (!f) return base;
+    return base.filter(p => (p.nome ?? '').toLowerCase().includes(f));
+  }
+
+  get produtosDestinoCompativeis(): Produto[] {
+    return this.produtosDestino.filter(p => this.isProdutoCompativel(p));
   }
 
   onLojaDestinoInput(value: string): void {
@@ -432,7 +446,9 @@ export class EstoqueTransferenciaDialogComponent {
 
   onProdutoDestinoInput(value: string): void {
     this.produtoDestinoTexto = value ?? '';
-    const produto = this.produtosDestino.find(p => (p.nome ?? '').toLowerCase() === this.produtoDestinoTexto.trim().toLowerCase());
+    const produto = this.produtosDestinoFiltradosPorTexto.find(
+      p => (p.nome ?? '').toLowerCase() === this.produtoDestinoTexto.trim().toLowerCase()
+    );
     this.form.get('produtoDestinoId')?.setValue(produto?.id ?? null);
   }
 
@@ -480,11 +496,24 @@ export class EstoqueTransferenciaDialogComponent {
       return;
     }
 
+    const produtoDestinoId = Number(this.form.value.produtoDestinoId);
+    const produtoDestino = this.produtosDestino.find(p => p.id === produtoDestinoId);
+    if (!produtoDestino || !this.isProdutoCompativel(produtoDestino)) {
+      this.errorMessage = 'Produto destino incompatível com o produto de origem.';
+      return;
+    }
+
+    const quantidade = this.parseDecimal(this.form.value.quantidade);
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      this.errorMessage = 'Informe uma quantidade valida.';
+      return;
+    }
+
     const req: TransferenciaEstoqueRequest = {
       produtoIdOrigem: this.produto.id,
       lojaDestinoId: Number(this.form.value.lojaDestinoId),
-      produtoIdDestino: Number(this.form.value.produtoDestinoId),
-      quantidade: Number(this.form.value.quantidade),
+      produtoIdDestino: produtoDestinoId,
+      quantidade,
       observacao: this.form.value.observacao?.trim() || null,
     };
 
@@ -500,5 +529,33 @@ export class EstoqueTransferenciaDialogComponent {
         this.errorMessage = err?.error?.error || 'Nao foi possivel transferir.';
       },
     });
+  }
+
+  private isProdutoCompativel(produto: Produto): boolean {
+    if (!produto || !this.produto) return false;
+    const nomeOrigem = (this.produto.nome ?? '').trim().toLowerCase();
+    const nomeDestino = (produto.nome ?? '').trim().toLowerCase();
+    if (nomeOrigem && nomeDestino && nomeOrigem === nomeDestino) return true;
+
+    const codigoOrigem = (this.produto.codigoBarra ?? '').trim().toLowerCase();
+    const codigoDestino = (produto.codigoBarra ?? '').trim().toLowerCase();
+    if (codigoOrigem && codigoDestino && codigoOrigem === codigoDestino) return true;
+
+    return false;
+  }
+
+  private parseDecimal(value: unknown): number {
+    if (typeof value === 'number') return value;
+    const raw = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.');
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : NaN;
+  }
+
+  private decimalMin(min: number) {
+    return (control: AbstractControl): ValidationErrors | null => {
+      const value = this.parseDecimal(control.value);
+      if (!Number.isFinite(value)) return { decimal: true };
+      return value >= min ? null : { min: { min, actual: value } };
+    };
   }
 }

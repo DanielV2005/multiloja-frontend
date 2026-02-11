@@ -2,8 +2,10 @@
 import { Component, Inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
+  AbstractControl,
   FormBuilder,
   FormGroup,
+  ValidationErrors,
   Validators,
   ReactiveFormsModule,
 } from '@angular/forms';
@@ -123,8 +125,8 @@ export interface ProdutoFormDialogData {
           <label for="quantidade">Quantidade</label>
           <input
             id="quantidade"
-            type="number"
-            min="0"
+            type="text"
+            inputmode="decimal"
             formControlName="quantidade"
           />
           <small
@@ -449,7 +451,7 @@ export class ProdutoFormDialogComponent implements OnInit {
       nome: ['', [Validators.required, Validators.maxLength(120)]],
       setorId: [null, [Validators.required]],
       codigoBarra: [''],
-      quantidade: [0, [Validators.required, Validators.min(0)]],
+      quantidade: [0, [Validators.required, this.decimalMin(0)]],
       precoCusto: [0, [Validators.required, Validators.min(0)]],
       precoVenda: [0, [Validators.required, Validators.min(0)]],
     });
@@ -528,13 +530,19 @@ export class ProdutoFormDialogComponent implements OnInit {
 
     const value = this.form.getRawValue();
 
+    const quantidade = this.parseDecimal(value.quantidade ?? 0);
+    if (!Number.isFinite(quantidade) || quantidade < 0) {
+      this.errorMessage = 'Informe uma quantidade valida.';
+      return;
+    }
+
     const dto: SalvarProdutoRequest = {
       codigoBarra : value.codigoBarra || null,
       setorId     : Number(value.setorId),
       nome        : value.nome,
       precoCusto  : Number(value.precoCusto ?? 0),
       precoVenda  : Number(value.precoVenda ?? 0),
-      quantidade  : Number(value.quantidade ?? 0),
+      quantidade  : quantidade,
       ativo       : true,
     };
 
@@ -639,5 +647,20 @@ export class ProdutoFormDialogComponent implements OnInit {
 
   fechar(result: boolean): void {
     this.dialogRef.close(result);
+  }
+
+  private parseDecimal(value: unknown): number {
+    if (typeof value === 'number') return value;
+    const raw = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.');
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : NaN;
+  }
+
+  private decimalMin(min: number) {
+    return (control: AbstractControl): ValidationErrors | null => {
+      const value = this.parseDecimal(control.value);
+      if (!Number.isFinite(value)) return { decimal: true };
+      return value >= min ? null : { min: { min, actual: value } };
+    };
   }
 }

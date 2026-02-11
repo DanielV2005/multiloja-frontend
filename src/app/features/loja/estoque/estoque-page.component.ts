@@ -520,7 +520,8 @@ export class EstoquePageComponent implements OnInit {
   }
 
   private toNumber(value: number | string | null | undefined): number {
-    const n = Number(value);
+    const raw = typeof value === 'string' ? value.trim().replace(/\s/g, '').replace(',', '.') : value;
+    const n = Number(raw);
     return Number.isFinite(n) ? n : 0;
   }
 

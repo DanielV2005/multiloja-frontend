@@ -203,9 +203,19 @@ export class ProdutoService {
     return this.http.post<void>(this.estoqueMovimentosApi, dto);
   }
 
-  listarMovimentos(produtoId?: number, take = 100): Observable<EstoqueMovimentoDto[]> {
-    let params = new HttpParams().set('take', String(take));
+  listarMovimentos(
+    produtoId?: number,
+    take = 100,
+    skip = 0,
+    dataInicio?: string,
+    dataFim?: string
+  ): Observable<EstoqueMovimentoDto[]> {
+    let params = new HttpParams()
+      .set('take', String(take))
+      .set('skip', String(skip));
     if (produtoId) params = params.set('produtoId', String(produtoId));
+    if (dataInicio) params = params.set('dataInicio', dataInicio);
+    if (dataFim) params = params.set('dataFim', dataFim);
     return this.http.get<EstoqueMovimentoDto[]>(this.estoqueMovimentosApi, { params });
   }
 

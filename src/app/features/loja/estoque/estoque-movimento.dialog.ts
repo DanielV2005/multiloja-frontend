@@ -2,8 +2,10 @@
 import { Component, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
+  AbstractControl,
   FormBuilder,
   FormGroup,
+  ValidationErrors,
   Validators,
   ReactiveFormsModule,
 } from '@angular/forms';
@@ -64,8 +66,8 @@ export interface EstoqueMovimentoDialogData {
           <label for="novaQuantidade">Nova quantidade</label>
           <input
             id="novaQuantidade"
-            type="number"
-            min="0"
+            type="text"
+            inputmode="decimal"
             formControlName="novaQuantidade"
           />
           <small class="error" *ngIf="novaCtrl?.touched && novaCtrl?.invalid">
@@ -266,7 +268,7 @@ export class EstoqueMovimentoDialogComponent {
     this.produto = data.produto;
     this.quantidadeAtual = data.produto.quantidade ?? 0;
     this.form = this.fb.group({
-      novaQuantidade: [this.quantidadeAtual, [Validators.required, Validators.min(0)]],
+      novaQuantidade: [this.quantidadeAtual, [Validators.required, this.decimalMin(0)]],
       motivo: [EstoqueMovimentoMotivo.Ajuste],
       observacao: [''],
     });
@@ -277,7 +279,7 @@ export class EstoqueMovimentoDialogComponent {
   }
 
   get delta() {
-    const novo = Number(this.novaCtrl?.value ?? this.quantidadeAtual);
+    const novo = this.parseDecimal(this.novaCtrl?.value ?? this.quantidadeAtual);
     return novo - this.quantidadeAtual;
   }
 
@@ -309,11 +311,17 @@ export class EstoqueMovimentoDialogComponent {
     const tipo =
       this.delta > 0 ? EstoqueMovimentoTipo.Entrada : EstoqueMovimentoTipo.Saida;
 
+    const quantidade = this.deltaAbs;
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      this.errorMessage = 'Informe uma quantidade valida.';
+      return;
+    }
+
     const req: EstoqueMovimentoRequest = {
       produtoId: this.produto.id,
       tipo,
       motivo: this.form.value.motivo,
-      quantidade: this.deltaAbs,
+      quantidade,
       referenciaTipo: 'MovimentacaoManual',
       referenciaId: null,
       observacao: this.form.value.observacao?.trim() || null,
@@ -333,5 +341,20 @@ export class EstoqueMovimentoDialogComponent {
         this.errorMessage = err?.error?.error || 'Nao foi possivel registrar o movimento.';
       },
     });
+  }
+
+  private parseDecimal(value: unknown): number {
+    if (typeof value === 'number') return value;
+    const raw = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.');
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : NaN;
+  }
+
+  private decimalMin(min: number) {
+    return (control: AbstractControl): ValidationErrors | null => {
+      const value = this.parseDecimal(control.value);
+      if (!Number.isFinite(value)) return { decimal: true };
+      return value >= min ? null : { min: { min, actual: value } };
+    };
   }
 }
