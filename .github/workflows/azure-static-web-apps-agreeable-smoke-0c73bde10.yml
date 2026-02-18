@@ -31,6 +31,12 @@ jobs:
         run: npm ci
       - name: Build app
         run: npm run build
+      - name: Verify build output
+        run: |
+          if [ ! -f "dist/multiloja-web.client/browser/index.html" ]; then
+            echo "index.html not found in dist/multiloja-web.client/browser"
+            exit 1
+          fi
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
       - name: Get Id Token
