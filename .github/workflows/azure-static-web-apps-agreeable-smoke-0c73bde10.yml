@@ -31,6 +31,8 @@ jobs:
         run: npm ci
       - name: Build app
         run: npm run build
+      - name: List build output
+        run: ls -la dist/multiloja-web.client/browser
       - name: Verify build output
         run: |
           if [ ! -f "dist/multiloja-web.client/browser/index.html" ]; then
