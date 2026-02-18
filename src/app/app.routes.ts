@@ -85,6 +85,16 @@ export const routes: Routes = [
       import('./features/pdv/pdv.component').then(m => m.PdvComponent),
   },
 
+  // =========================
+  // RELATÓRIOS
+  // =========================
+  {
+    path: 'loja/:id/relatorios/vendas',
+    canActivate: [authGuard, lojaGuard],
+    loadComponent: () =>
+      import('./features/loja/relatorios/vendas-page.component').then(m => m.VendasPageComponent),
+  },
+
   { path: '', pathMatch: 'full', redirectTo: 'login' },
   { path: '**', redirectTo: 'login' },
 ];

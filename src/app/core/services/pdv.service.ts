@@ -18,6 +18,27 @@ export interface SaleSummaryDto {
   createdAt: string;
 }
 
+export interface SaleListItemDto {
+  id: number;
+  lojaId: number;
+  operadorId?: number | null;
+  operadorNome?: string | null;
+  subtotal: number;
+  discountPercent: number;
+  discountValue: number;
+  total: number;
+  status: SaleStatus | string;
+  createdAt: string;
+}
+
+export interface SaleItemSummaryDto {
+  produtoId: number;
+  tipo: string;
+  nome: string;
+  quantidade: number;
+  total: number;
+}
+
 export interface StartSaleRequest {
   startNew?: boolean;
 }
@@ -56,6 +77,32 @@ export class PdvService {
 
   listOpen(): Observable<SaleSummaryDto[]> {
     return this.http.get<SaleSummaryDto[]>(`${this.api}/open`);
+  }
+
+  list(
+    dataInicio?: string,
+    dataFim?: string,
+    status?: Array<string | number>,
+    skip = 0,
+    take = 100
+  ): Observable<SaleListItemDto[]> {
+    const params: any = { skip, take };
+    if (dataInicio) params.dataInicio = dataInicio;
+    if (dataFim) params.dataFim = dataFim;
+    if (status && status.length) params.status = status.join(',');
+    return this.http.get<SaleListItemDto[]>(`${this.api}`, { params });
+  }
+
+  listItemSummary(
+    dataInicio?: string,
+    dataFim?: string,
+    status?: Array<string | number>
+  ): Observable<SaleItemSummaryDto[]> {
+    const params: any = {};
+    if (dataInicio) params.dataInicio = dataInicio;
+    if (dataFim) params.dataFim = dataFim;
+    if (status && status.length) params.status = status.join(',');
+    return this.http.get<SaleItemSummaryDto[]>(`${this.api}/items/summary`, { params });
   }
 
   get(saleId: number): Observable<SaleSummaryDto> {

@@ -209,14 +209,24 @@ export class ProdutoService {
     skip = 0,
     dataInicio?: string,
     dataFim?: string
-  ): Observable<EstoqueMovimentoDto[]> {
+  ): Observable<{ items: EstoqueMovimentoDto[]; total: number }> {
     let params = new HttpParams()
       .set('take', String(take))
       .set('skip', String(skip));
     if (produtoId) params = params.set('produtoId', String(produtoId));
     if (dataInicio) params = params.set('dataInicio', dataInicio);
     if (dataFim) params = params.set('dataFim', dataFim);
-    return this.http.get<EstoqueMovimentoDto[]>(this.estoqueMovimentosApi, { params });
+    return this.http
+      .get<EstoqueMovimentoDto[]>(this.estoqueMovimentosApi, { params, observe: 'response' })
+      .pipe(
+        map(res => {
+          const items = res.body ?? [];
+          const totalHeader = res.headers.get('X-Total-Count');
+          const parsed = totalHeader ? Number(totalHeader) : NaN;
+          const total = Number.isFinite(parsed) ? parsed : items.length;
+          return { items, total };
+        })
+      );
   }
 
   transferirEstoque(dto: TransferenciaEstoqueRequest): Observable<void> {

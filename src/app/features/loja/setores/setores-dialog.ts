@@ -16,6 +16,7 @@ import {
 } from './setor-form.dialog';
 
 import { SetoresDesativadosDialogComponent } from './setores-desativados.dialog';
+import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 
 @Component({
   standalone: true,
@@ -361,17 +362,27 @@ export class SetoresDialogComponent implements OnInit {
   }
 
   desativar(s: Setor) {
-    if (!confirm(`Desativar o setor "${s.nome}"?`)) return;
-
-    this.api.desativar(s.id).subscribe({
-      next: () => {
-        this.setores = this.setores.filter(x => x.id !== s.id);
-        this.desativarProdutosDoSetor(s.id);
+    this.dialog.open(ConfirmDialogComponent, {
+      autoFocus: false,
+      data: {
+        title: 'Desativar setor',
+        message: `Desativar o setor "${s.nome}"?`,
+        confirmText: 'Sim',
+        cancelText: 'Nao',
       },
-      error: (err: any) => {
-        console.error('Erro ao desativar setor', err);
-        alert('Não foi possível desativar o setor.');
-      }
+    }).afterClosed().subscribe((confirmou: boolean | undefined) => {
+      if (!confirmou) return;
+
+      this.api.desativar(s.id).subscribe({
+        next: () => {
+          this.setores = this.setores.filter(x => x.id !== s.id);
+          this.desativarProdutosDoSetor(s.id);
+        },
+        error: (err: any) => {
+          console.error('Erro ao desativar setor', err);
+          alert('Não foi possível desativar o setor.');
+        }
+      });
     });
   }
 

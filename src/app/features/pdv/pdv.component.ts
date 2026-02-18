@@ -2,12 +2,14 @@ import { AfterViewInit, Component, ElementRef, ViewChild, HostListener, inject, 
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
 import { AuthStorageService } from '../../core/services/auth-storage.service';
 import { ItensVendaveisService, ItemVendavelDto } from '../../core/services/itens-vendaveis.service';
 import { PdvService, SaleSummaryDto } from '../../core/services/pdv.service';
 import { firstValueFrom, forkJoin } from 'rxjs';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 
 interface CartItem {
   key: string;
@@ -44,7 +46,7 @@ interface DraftPayload {
 @Component({
   standalone: true,
   selector: 'app-pdv',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MatDialogModule],
   template: `
   <section class="page">
     <header class="topbar">
@@ -902,6 +904,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private usuarioService = inject(UsuarioService);
   private itensService = inject(ItensVendaveisService);
   private pdvService = inject(PdvService);
+  private dialog = inject(MatDialog);
   private auth = inject(AuthStorageService);
   private host = inject(ElementRef<HTMLElement>);
 
@@ -1509,19 +1512,31 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       this.removerRascunhoAtual();
       return;
     }
-    if (!confirm('Cancelar esta venda?')) return;
-
-    const saleId = this.currentSale.id;
-    this.pdvService.cancel(saleId).subscribe({
-      next: () => {
-        this.removeSale(saleId);
-        this.ensureSaleOpen();
-        this.notifySalesChanged();
+    this.dialog.open(ConfirmDialogComponent, {
+      autoFocus: false,
+      data: {
+        title: 'Cancelar venda',
+        message: 'Cancelar esta venda?',
+        confirmText: 'Sim',
+        cancelText: 'Nao',
       },
-      error: err => {
-        console.error('[PDV] erro ao cancelar venda', err);
-        alert(err?.error?.message ?? 'Nao foi possivel cancelar a venda.');
-      }
+    }).afterClosed().subscribe((confirmou: boolean | undefined) => {
+      if (!confirmou) return;
+
+      const sale = this.currentSale;
+      if (!sale) return;
+      const saleId = sale.id;
+      this.pdvService.cancel(saleId).subscribe({
+        next: () => {
+          this.removeSale(saleId);
+          this.ensureSaleOpen();
+          this.notifySalesChanged();
+        },
+        error: err => {
+          console.error('[PDV] erro ao cancelar venda', err);
+          alert(err?.error?.message ?? 'Nao foi possivel cancelar a venda.');
+        }
+      });
     });
   }
 

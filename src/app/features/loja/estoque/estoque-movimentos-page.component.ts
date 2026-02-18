@@ -1,4 +1,4 @@
-// src/app/features/loja/estoque/estoque-movimentos-page.component.ts
+﻿// src/app/features/loja/estoque/estoque-movimentos-page.component.ts
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -41,32 +41,75 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
       <div class="card">
         <header class="card__header">
           <div>
-            <h3>Histórico</h3>
+            <h3>Historico</h3>
             <small class="muted">
-              {{ loading ? 'Carregando...' : 'Itens: ' + movimentos.length }}
+              {{
+                loading
+                  ? 'Carregando...'
+                  : totalMovimentos !== null
+                    ? 'Mostrando ' + movimentos.length + ' de ' + totalMovimentos
+                    : 'Itens: ' + movimentos.length
+              }}
             </small>
           </div>
 
           <form class="filters" [formGroup]="form" (ngSubmit)="buscar(true)">
             <div class="field">
-              <input
-                type="text"
-                formControlName="produtoNome"
-                list="produtos-list"
-                placeholder="Todos os produtos"
-                (input)="onProdutoInput()"
-              />
-              <datalist id="produtos-list">
-                <option *ngFor="let p of produtos" [value]="p.nome"></option>
-              </datalist>
+              <div class="combo">
+                <div class="combo-input-wrap">
+                  <input
+                    type="text"
+                    formControlName="produtoNome"
+                    placeholder="Todos os produtos"
+                    autocomplete="off"
+                    (input)="onProdutoInput()"
+                    (focus)="menuProdutoAberto = true"
+                    (blur)="fecharMenuProdutoComDelay()"
+                  />
+                  <button
+                    type="button"
+                    class="combo-toggle"
+                    (mousedown)="$event.preventDefault()"
+                    (click)="toggleMenuProduto()"
+                  >
+                    <span class="material-symbols-outlined">expand_more</span>
+                  </button>
+                </div>
+                <div class="combo-menu" *ngIf="menuProdutoAberto">
+                  <button
+                    type="button"
+                    class="combo-item"
+                    *ngFor="let p of produtosFiltradosPorTexto"
+                    (mousedown)="$event.preventDefault()"
+                    (click)="selecionarProduto(p)"
+                  >
+                    {{ p.nome }}
+                  </button>
+                  <div class="combo-empty" *ngIf="produtosFiltradosPorTexto.length === 0">
+                    Nenhum produto encontrado.
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="field">
-              <input type="date" formControlName="dataInicio" />
+              <input
+                type="text"
+                formControlName="dataInicio"
+                placeholder="dd/mm/aaaa"
+                inputmode="numeric"
+                autocomplete="off"
+              />
             </div>
-            <span class="range-sep">—</span>
+            <span class="range-sep">-</span>
             <div class="field">
-              <input type="date" formControlName="dataFim" />
+              <input
+                type="text"
+                formControlName="dataFim"
+                placeholder="dd/mm/aaaa"
+                inputmode="numeric"
+                autocomplete="off"
+              />
             </div>
 
             <button class="btn-secondary" type="submit">Atualizar</button>
@@ -104,10 +147,10 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
             </span>
             <span class="cell col-motivo">{{ motivoLabel(m.motivo) }}</span>
             <span class="cell col-numero">{{ m.quantidade }}</span>
-            <span class="cell col-numero">{{ m.saldoAnterior }} → {{ m.saldoPosterior }}</span>
+            <span class="cell col-numero">{{ m.saldoAnterior }} -> {{ m.saldoPosterior }}</span>
             <span class="cell col-ref">
               <span *ngIf="m.referenciaTipo">{{ referenciaLabel(m.referenciaTipo) }}</span>
-              <span class="muted" *ngIf="!m.referenciaTipo">—</span>
+              <span class="muted" *ngIf="!m.referenciaTipo">-</span>
             </span>
           </div>
           </div>
@@ -187,6 +230,56 @@ import { UsuarioService, Loja } from '../../../core/services/usuario.service';
     .field{
       display:flex;
       align-items:center;
+    }
+    .combo{ position:relative; width:100%; }
+    .combo-input-wrap{ position:relative; display:flex; width:100%; }
+    .combo-input-wrap input{ padding-right:38px; width:100%; }
+    .combo-toggle{
+      position:absolute;
+      right:6px;
+      top:4px;
+      width:28px;
+      height:28px;
+      border:none;
+      border-radius:8px;
+      background:transparent;
+      color:var(--muted);
+      display:grid;
+      place-items:center;
+      cursor:pointer;
+    }
+    .combo-toggle:hover{ background:rgba(148,163,184,.14); color:var(--text); }
+    .combo-menu{
+      position:absolute;
+      left:0;
+      right:0;
+      top:40px;
+      z-index:20;
+      border:1px solid var(--border);
+      border-radius:10px;
+      background:#111827;
+      box-shadow:var(--shadow);
+      max-height:180px;
+      overflow-y:auto;
+      overflow-x:hidden;
+    }
+    .combo-item{
+      width:100%;
+      text-align:left;
+      border:none;
+      background:transparent;
+      color:var(--text);
+      padding:10px 12px;
+      cursor:pointer;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .combo-item:hover{ background:rgba(148,163,184,.16); }
+    .combo-empty{
+      color:var(--muted);
+      padding:10px 12px;
+      font-size:.9rem;
     }
     input[type="text"],
     input[type="date"],
@@ -317,6 +410,8 @@ export class EstoqueMovimentosPageComponent implements OnInit, OnDestroy {
   skip = 0;
   readonly pageSize = 100;
   private selectedProdutoId?: number;
+  menuProdutoAberto = false;
+  totalMovimentos: number | null = null;
 
   EstoqueMovimentoTipo = EstoqueMovimentoTipo;
 
@@ -353,6 +448,7 @@ export class EstoqueMovimentosPageComponent implements OnInit, OnDestroy {
       )
       .subscribe(() => {
         this.onProdutoInput();
+        if (!this.filtersValid()) return;
         this.buscar(true);
       });
   }
@@ -377,29 +473,60 @@ export class EstoqueMovimentosPageComponent implements OnInit, OnDestroy {
     this.selectedProdutoId = matches.length === 1 ? matches[0].id : undefined;
   }
 
+  get produtosFiltradosPorTexto(): Produto[] {
+    const nome = (this.form.value.produtoNome ?? '').trim().toLowerCase();
+    if (!nome) return this.produtos;
+    return this.produtos.filter(p => (p.nome ?? '').toLowerCase().includes(nome));
+  }
+
+  toggleMenuProduto(): void {
+    this.menuProdutoAberto = !this.menuProdutoAberto;
+  }
+
+  fecharMenuProdutoComDelay(): void {
+    setTimeout(() => (this.menuProdutoAberto = false), 120);
+  }
+
+  selecionarProduto(produto: Produto): void {
+    this.form.get('produtoNome')?.setValue(produto.nome ?? '');
+    this.selectedProdutoId = produto.id;
+    this.menuProdutoAberto = false;
+  }
+
   buscar(reset = false): void {
     if (reset) {
       this.movimentos = [];
       this.skip = 0;
       this.hasMore = true;
+      this.totalMovimentos = null;
     }
     if (!this.hasMore || this.loadingMore) return;
 
-    const dataInicio = this.form.value.dataInicio || undefined;
-    const dataFim = this.form.value.dataFim || undefined;
+    const dataInicio = this.normalizeDate(this.form.value.dataInicio || undefined);
+    const dataFim = this.normalizeDate(this.form.value.dataFim || undefined);
     const produtoId = this.selectedProdutoId;
 
     this.loading = this.skip === 0;
     this.loadingMore = this.skip > 0;
 
+    console.debug('[Movimentos] filtros', { produtoId, dataInicio, dataFim, skip: this.skip });
+
     this.produtoService
       .listarMovimentos(produtoId, this.pageSize, this.skip, dataInicio, dataFim)
       .subscribe({
-        next: itens => {
-          const novos = itens ?? [];
+        next: res => {
+          const novos = res.items ?? [];
           this.movimentos = this.skip === 0 ? novos : [...this.movimentos, ...novos];
           this.skip += novos.length;
-          this.hasMore = novos.length === this.pageSize;
+          if (this.skip === novos.length) {
+            this.totalMovimentos = res.total ?? null;
+          } else if (res.total != null) {
+            this.totalMovimentos = res.total;
+          }
+          this.hasMore =
+            this.totalMovimentos !== null
+              ? this.movimentos.length < this.totalMovimentos
+              : novos.length === this.pageSize;
           this.loading = false;
           this.loadingMore = false;
         },
@@ -416,6 +543,34 @@ export class EstoqueMovimentosPageComponent implements OnInit, OnDestroy {
     const el = event.target as HTMLElement;
     const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
     if (nearBottom) this.buscar(false);
+  }
+
+  private normalizeDate(value?: string): string | undefined {
+    if (!value) return undefined;
+    const v = value.trim();
+    if (!v) return undefined;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      return v;
+    }
+
+    const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v);
+    if (br) {
+      const day = br[1];
+      const month = br[2];
+      const year = br[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    return undefined;
+  }
+
+  private filtersValid(): boolean {
+    const inicio = (this.form.value.dataInicio ?? '').trim();
+    const fim = (this.form.value.dataFim ?? '').trim();
+    if (inicio && !this.normalizeDate(inicio)) return false;
+    if (fim && !this.normalizeDate(fim)) return false;
+    return true;
   }
 
   trackById(_: number, item: EstoqueMovimentoDto): number {

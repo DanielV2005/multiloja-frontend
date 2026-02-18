@@ -17,6 +17,7 @@ import {
 } from './loja-form.dialog';
 
 import { LojasDesativadasDialogComponent } from './lojas-desativadas.dialog';
+import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 
 @Component({
   standalone: true,
@@ -616,14 +617,24 @@ export class MinhasLojasComponent implements OnInit {
       alert('Loja sem id.');
       return;
     }
-    if (!confirm(`Desativar a loja "${l.nome}"?`)) return;
-
-    this.api.desativarLoja(l.id).subscribe({
-      next: () => {
-        this.lojas = this.lojas.filter(x => x.id !== l.id);
-        if (this.selectedId === l.id) this.selectedId = null;
+    this.dialog.open(ConfirmDialogComponent, {
+      autoFocus: false,
+      data: {
+        title: 'Desativar loja',
+        message: `Desativar a loja "${l.nome}"?`,
+        confirmText: 'Sim',
+        cancelText: 'Nao',
       },
-      error: _ => alert('Não foi possível desativar a loja.')
+    }).afterClosed().subscribe((confirmou: boolean | undefined) => {
+      if (!confirmou) return;
+
+      this.api.desativarLoja(l.id).subscribe({
+        next: () => {
+          this.lojas = this.lojas.filter(x => x.id !== l.id);
+          if (this.selectedId === l.id) this.selectedId = null;
+        },
+        error: _ => alert('Não foi possível desativar a loja.')
+      });
     });
   }
 
