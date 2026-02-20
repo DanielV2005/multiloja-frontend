@@ -7,9 +7,10 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
 import { AuthStorageService } from '../../core/services/auth-storage.service';
 import { ItensVendaveisService, ItemVendavelDto } from '../../core/services/itens-vendaveis.service';
-import { PdvService, SaleSummaryDto } from '../../core/services/pdv.service';
+import { PdvService, SaleListItemDto, SaleSummaryDto } from '../../core/services/pdv.service';
 import { firstValueFrom, forkJoin } from 'rxjs';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
+import { VendaDetalhesDialogComponent } from '../loja/relatorios/vendas-page.component';
 
 interface CartItem {
   key: string;
@@ -1001,8 +1002,10 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       error: () => this.loja = null,
     });
 
-    this.cancelarSeMarcado();
-    this.carregarAbertas();
+    const pendingCancel = this.cancelarSeMarcado();
+    if (!pendingCancel) {
+      this.carregarAbertas();
+    }
   }
 
   ngOnDestroy(): void {
@@ -1809,25 +1812,36 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     return `pdv_cancel_on_next_${this.lojaId}`;
   }
 
-  private cancelarSeMarcado(): void {
+  private cancelarSeMarcado(): boolean {
     const flag = localStorage.getItem(this.cancelFlagKey());
-    if (!flag) return;
+    if (!flag) return false;
     localStorage.removeItem(this.cancelFlagKey());
     this.clearLocalSalesState();
     this.pdvService.listOpen().subscribe({
       next: list => {
         const calls = (list ?? []).map(s => this.pdvService.cancel(s.id));
-        if (calls.length === 0) return;
+        if (calls.length === 0) {
+          this.carregarAbertas();
+          return;
+        }
         forkJoin(calls).subscribe({
           next: () => {
             this.clearLocalSalesState();
             this.notifySalesChanged();
+            this.carregarAbertas();
           },
-          error: err => console.error('[PDV] erro ao cancelar vendas pendentes', err),
+          error: err => {
+            console.error('[PDV] erro ao cancelar vendas pendentes', err);
+            this.carregarAbertas();
+          },
         });
       },
-      error: err => console.error('[PDV] erro ao checar vendas pendentes', err),
+      error: err => {
+        console.error('[PDV] erro ao checar vendas pendentes', err);
+        this.carregarAbertas();
+      },
     });
+    return true;
   }
 
   private persistDraftState(): void {
@@ -2112,6 +2126,11 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   onPdvShortcut(event: KeyboardEvent): void {
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const key = event.key.toLowerCase();
+    if (key === 'v') {
+      if (this.isTextInput(event.target)) return;
+      event.preventDefault();
+      this.abrirUltimaVenda();
+    }
     if (key === 'b') {
       event.preventDefault();
       this.focusNextPdvField(1);
@@ -2500,5 +2519,30 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       case 5: return 'Voucher';
       default: return 'Outro';
     }
+  }
+
+  private abrirUltimaVenda(): void {
+    this.pdvService.list(undefined, undefined, undefined, 0, 200).subscribe({
+      next: (vendas: SaleListItemDto[]) => {
+        if (!vendas?.length) return;
+        const ordered = [...vendas].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const saleIds = ordered.map(v => v.id);
+        this.dialog.open(VendaDetalhesDialogComponent, {
+          autoFocus: false,
+          maxWidth: '95vw',
+          panelClass: 'ml-dialog',
+          data: { saleId: saleIds[0], saleIds, index: 0 },
+        });
+      },
+    });
+  }
+
+  private isTextInput(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName?.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
   }
 }

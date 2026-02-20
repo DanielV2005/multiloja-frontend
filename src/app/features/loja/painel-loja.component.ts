@@ -12,6 +12,7 @@ import { Produto, ProdutoService } from '../../core/services/produto.service';
 import { Setor, SetorService } from '../../core/services/setor.service';
 import { FuncionarioFormDialogComponent } from './funcionarios/funcionario-form.dialog';
 import { SetoresDialogComponent } from './setores/setores-dialog';
+import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component';
 
 @Component({
   standalone: true,
@@ -212,15 +213,20 @@ import { SetoresDialogComponent } from './setores/setores-dialog';
         </div>
 
         <div class="card chart sales-card">
-          <header class="card__header">
-            <div>
-              <h3>Vendas gerais</h3>
-              <small class="muted">Faturamento no periodo visivel: {{ visibleRevenueLabel }}</small>
-            </div>
-            <button class="btn-secondary" type="button" (click)="irParaRelatorioVendas()">
-              Ver lista
-            </button>
-          </header>
+            <header class="card__header">
+              <div>
+                <h3>Vendas gerais</h3>
+                <small class="muted">Faturamento no periodo visivel: {{ visibleRevenueLabel }}</small>
+              </div>
+              <div class="card__actions">
+                <button class="btn-secondary" type="button" (click)="refreshSalesChart()" [disabled]="salesLoading">
+                  Atualizar
+                </button>
+                <button class="btn-secondary" type="button" (click)="irParaRelatorioVendas()">
+                  Ver lista
+                </button>
+              </div>
+            </header>
 
           <div class="sales-chart" role="img" aria-label="Grafico de vendas">
             <div class="sales-chart__header">
@@ -443,6 +449,14 @@ import { SetoresDialogComponent } from './setores/setores-dialog';
         align-items: baseline;
         gap: 10px;
         margin-bottom: 12px;
+      }
+
+      .card__actions {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
       }
 
       .chart {
@@ -787,6 +801,15 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.menuRelatoriosAberto = false;
   }
 
+  @HostListener('window:keydown', ['$event'])
+  onAtalhoDetalhes(event: KeyboardEvent): void {
+    if (event.altKey && (event.key === 'v' || event.key === 'V')) {
+      if (this.isTextInput(event.target)) return;
+      event.preventDefault();
+      this.abrirUltimaVenda();
+    }
+  }
+
   toggleMenuFuncionarios(ev?: MouseEvent): void {
     ev?.stopPropagation();
     if (!this.loja) return;
@@ -1067,6 +1090,10 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.renderChart();
   }
 
+  refreshSalesChart(): void {
+    this.loadSalesChart();
+  }
+
   private async loadInventorySnapshot(): Promise<void> {
     if (!this.loja?.id) return;
 
@@ -1133,8 +1160,8 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     const values = this.salesProfitSeries.map((s) => s.value);
     const counts = this.salesCountSeries.map((s) => s.value);
     const range = this.zoomRange ?? { startIndex: 0, endIndex: values.length - 1 };
-    const startIndex = Math.max(0, Math.min(range.startIndex, values.length - 1));
-    const endIndex = Math.max(startIndex, Math.min(range.endIndex, values.length - 1));
+    const startIndex = Math.max(0, Math.min(range.startIndex - 1, values.length - 1));
+    const endIndex = Math.max(startIndex, Math.min(range.endIndex + 1, values.length - 1));
 
     let sum = 0;
     let countSum = 0;
@@ -1149,6 +1176,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.visibleTicketLabel = this.formatMoney(ticket);
     this.scheduleTopSetoresUpdate();
   }
+
 
   private captureZoomRange(evt: any): void {
     if (!this.salesProfitSeries.length) return;
@@ -1328,6 +1356,32 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private isProdutoItem(item: SaleItemSummaryDto): boolean {
     const tipo = String(item.tipo ?? '').trim().toLowerCase();
     return tipo === 'produto' || tipo === 'product';
+  }
+
+  private abrirUltimaVenda(): void {
+    if (!this.loja?.id) return;
+    this.pdv.list(undefined, undefined, undefined, 0, 200).subscribe({
+      next: (vendas) => {
+        if (!vendas?.length) return;
+        const ordered = [...vendas].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const saleIds = ordered.map(v => v.id);
+        this.dialog.open(VendaDetalhesDialogComponent, {
+          autoFocus: false,
+          maxWidth: '95vw',
+          panelClass: 'ml-dialog',
+          data: { saleId: saleIds[0], saleIds, index: 0 },
+        });
+      },
+    });
+  }
+
+  private isTextInput(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName?.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
   }
 
   private startOfWeek(d: Date): Date {

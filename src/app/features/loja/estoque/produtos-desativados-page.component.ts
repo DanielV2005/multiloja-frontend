@@ -1,12 +1,14 @@
-import { Component, Inject, OnInit, inject } from '@angular/core';
+import { Component, HostListener, Inject, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 
+import { PdvService } from '../../../core/services/pdv.service';
 import { ProdutoService, Produto } from '../../../core/services/produto.service';
 import { SetorService } from '../../../core/services/setor.service';
 import { UsuarioService, Loja } from '../../../core/services/usuario.service';
+import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.component';
 
 @Component({
   standalone: true,
@@ -303,6 +305,7 @@ export class ProdutosDesativadosPageComponent implements OnInit {
   private usuarioService = inject(UsuarioService);
   private produtoService = inject(ProdutoService);
   private setorService = inject(SetorService);
+  private pdv = inject(PdvService);
   private dialog = inject(MatDialog);
 
   lojaId = 0;
@@ -434,6 +437,40 @@ export class ProdutosDesativadosPageComponent implements OnInit {
         this.reativandoId = null;
       },
     });
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  onAtalhoDetalhes(event: KeyboardEvent): void {
+    if (event.altKey && (event.key === 'v' || event.key === 'V')) {
+      if (this.isTextInput(event.target)) return;
+      event.preventDefault();
+      this.abrirUltimaVenda();
+    }
+  }
+
+  private abrirUltimaVenda(): void {
+    this.pdv.list(undefined, undefined, undefined, 0, 200).subscribe({
+      next: (vendas) => {
+        if (!vendas?.length) return;
+        const ordered = [...vendas].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const saleIds = ordered.map(v => v.id);
+        this.dialog.open(VendaDetalhesDialogComponent, {
+          autoFocus: false,
+          maxWidth: '95vw',
+          panelClass: 'ml-dialog',
+          data: { saleId: saleIds[0], saleIds, index: 0 },
+        });
+      },
+    });
+  }
+
+  private isTextInput(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName?.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
   }
 }
 

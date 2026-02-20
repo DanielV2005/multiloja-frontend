@@ -1,11 +1,13 @@
 ﻿// src/app/features/loja/estoque/estoque-movimentos-page.component.ts
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, HostListener, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
+import { PdvService } from '../../../core/services/pdv.service';
 import {
   EstoqueMovimentoDto,
   EstoqueMovimentoMotivo,
@@ -14,11 +16,12 @@ import {
   ProdutoService,
 } from '../../../core/services/produto.service';
 import { UsuarioService, Loja } from '../../../core/services/usuario.service';
+import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.component';
 
 @Component({
   standalone: true,
   selector: 'app-estoque-movimentos-page',
-  imports: [CommonModule, RouterLink, ReactiveFormsModule],
+  imports: [CommonModule, RouterLink, ReactiveFormsModule, MatDialogModule],
   template: `
   <section class="page">
     <header class="topbar">
@@ -397,6 +400,8 @@ export class EstoqueMovimentosPageComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private usuarioService = inject(UsuarioService);
   private produtoService = inject(ProdutoService);
+  private pdv = inject(PdvService);
+  private dialog = inject(MatDialog);
   private fb = inject(FormBuilder);
   private formSub?: Subscription;
 
@@ -620,5 +625,39 @@ export class EstoqueMovimentosPageComponent implements OnInit, OnDestroy {
       default:
         return referenciaTipo;
     }
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  onAtalhoDetalhes(event: KeyboardEvent): void {
+    if (event.altKey && (event.key === 'v' || event.key === 'V')) {
+      if (this.isTextInput(event.target)) return;
+      event.preventDefault();
+      this.abrirUltimaVenda();
+    }
+  }
+
+  private abrirUltimaVenda(): void {
+    this.pdv.list(undefined, undefined, undefined, 0, 200).subscribe({
+      next: (vendas) => {
+        if (!vendas?.length) return;
+        const ordered = [...vendas].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const saleIds = ordered.map(v => v.id);
+        this.dialog.open(VendaDetalhesDialogComponent, {
+          autoFocus: false,
+          maxWidth: '95vw',
+          panelClass: 'ml-dialog',
+          data: { saleId: saleIds[0], saleIds, index: 0 },
+        });
+      },
+    });
+  }
+
+  private isTextInput(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName?.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
   }
 }

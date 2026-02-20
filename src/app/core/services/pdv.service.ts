@@ -31,6 +31,48 @@ export interface SaleListItemDto {
   createdAt: string;
 }
 
+export interface SaleItemDto {
+  id: number;
+  produtoId: number;
+  tipo: string;
+  nome: string;
+  codigoBarra?: string | null;
+  unitPrice: number;
+  quantity: number;
+  returnedQuantity: number;
+}
+
+export interface SaleReturnItemDto {
+  id: number;
+  saleItemId: number;
+  produtoId: number;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface SaleReturnDto {
+  id: number;
+  operadorId?: number | null;
+  reason?: string | null;
+  createdAt: string;
+  items: SaleReturnItemDto[];
+}
+
+export interface SaleDetailsDto {
+  id: number;
+  lojaId: number;
+  operadorId?: number | null;
+  operadorNome?: string | null;
+  subtotal: number;
+  discountPercent: number;
+  discountValue: number;
+  total: number;
+  status: SaleStatus | string;
+  createdAt: string;
+  items: SaleItemDto[];
+  returns: SaleReturnDto[];
+}
+
 export interface SaleItemSummaryDto {
   produtoId: number;
   tipo: string;
@@ -63,6 +105,17 @@ export interface AddPaymentRequest {
   method: number;
   amount: number;
   refCode?: string | null;
+}
+
+export interface ReturnSaleItemRequest {
+  saleItemId: number;
+  quantity: number;
+}
+
+export interface ReturnSaleRequest {
+  saleId: number;
+  reason?: string | null;
+  items: ReturnSaleItemRequest[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -109,6 +162,10 @@ export class PdvService {
     return this.http.get<SaleSummaryDto>(`${this.api}/${saleId}`);
   }
 
+  getDetails(saleId: number): Observable<SaleDetailsDto> {
+    return this.http.get<SaleDetailsDto>(`${this.api}/${saleId}/details`);
+  }
+
   addItem(saleId: number, body: AddItemRequest): Observable<SaleSummaryDto> {
     return this.http.post<SaleSummaryDto>(`${this.api}/${saleId}/items`, body);
   }
@@ -131,5 +188,9 @@ export class PdvService {
 
   cancel(saleId: number): Observable<void> {
     return this.http.post<void>(`${this.api}/${saleId}/cancel`, {});
+  }
+
+  returnSale(saleId: number, body: ReturnSaleRequest): Observable<SaleDetailsDto> {
+    return this.http.post<SaleDetailsDto>(`${this.api}/${saleId}/return`, { ...body, saleId });
   }
 }
