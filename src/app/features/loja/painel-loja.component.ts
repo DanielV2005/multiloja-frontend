@@ -3,11 +3,12 @@ import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, OnInit, 
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, forkJoin, from, of } from 'rxjs';
+import { catchError, mergeMap, toArray } from 'rxjs/operators';
 import * as echarts from 'echarts';
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
-import { PdvService, SaleItemSummaryDto, SaleListItemDto } from '../../core/services/pdv.service';
+import { PdvService, SaleDetailsDto, SaleItemSummaryDto, SaleListItemDto } from '../../core/services/pdv.service';
 import { Produto, ProdutoService } from '../../core/services/produto.service';
 import { Setor, SetorService } from '../../core/services/setor.service';
 import { FuncionarioFormDialogComponent } from './funcionarios/funcionario-form.dialog';
@@ -126,14 +127,21 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
       </nav>
 
       <!-- CONTEÚDO -->
-      <main class="content">
+      <main class="content" [class.censored]="isCensored">
         <div class="card chart">
           <header class="card__header">
             <h3>Painel geral</h3>
-            <small class="muted"> {{ loja?.nome || 'Loja selecionada' }} — visão rápida</small>
+            <small class="muted quickview">
+              {{ loja?.nome || 'Loja selecionada' }} — visão rápida
+              <button type="button" class="eye-btn" (click)="toggleCensor()" [attr.aria-pressed]="isCensored">
+                <span class="material-symbols-outlined">
+                  {{ isCensored ? 'visibility_off' : 'visibility' }}
+                </span>
+              </button>
+            </small>
           </header>
 
-          <div class="overview">
+          <div class="overview censor-block">
             <div class="kpis">
               <div class="kpi">
                 <span class="kpi__label">Faturamento</span>
@@ -154,6 +162,21 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                 <span class="kpi__label">Patrimônio (venda)</span>
                 <strong class="kpi__value">{{ visibleInventorySaleLabel }}</strong>
                 <small class="muted">Valor potencial</small>
+              </div>
+              <div class="kpi kpi--toggle" (click)="toggleProfitMode()">
+                <span class="kpi__label">
+                  {{ profitKpiMode === 'inventory' ? 'Lucro patrimonial' : 'Lucro no período' }}
+                </span>
+                <strong class="kpi__value">
+                  {{ profitKpiMode === 'inventory' ? inventoryProfitLabel : visibleProfitLabel }}
+                </strong>
+                <small class="muted">
+                  {{
+                    profitKpiMode === 'inventory'
+                      ? 'Potencial - investimento (clique para ver período)'
+                      : 'Período visível (clique para ver inventário)'
+                  }}
+                </small>
               </div>
               <div class="kpi">
                 <span class="kpi__label">Margem média</span>
@@ -214,9 +237,12 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
 
         <div class="card chart sales-card">
             <header class="card__header">
-              <div>
+              <div class="censor-block">
                 <h3>Vendas gerais</h3>
-                <small class="muted">Faturamento no periodo visivel: {{ visibleRevenueLabel }}</small>
+                <small class="muted">Faturamento no período visível: {{ visibleRevenueLabel }}</small>
+                <small class="muted">Serviços no período visível: {{ visibleServiceRevenueLabel }}</small>
+                <small class="muted">Total no período visível: {{ visibleTotalLabel }}</small>
+                <small class="muted">Lucro no período visível: {{ visibleProfitLabel }}</small>
               </div>
               <div class="card__actions">
                 <button class="btn-secondary" type="button" (click)="refreshSalesChart()" [disabled]="salesLoading">
@@ -228,7 +254,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
               </div>
             </header>
 
-          <div class="sales-chart" role="img" aria-label="Grafico de vendas">
+          <div class="sales-chart censor-block" role="img" aria-label="Grafico de vendas">
             <div class="sales-chart__header">
               <div class="sales-chart__title">
                 <span class="muted">Vendas finalizadas</span>
@@ -487,6 +513,48 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
         gap: 6px;
         min-height: 90px;
       }
+      .kpi--toggle {
+        cursor: pointer;
+        transition: transform 0.12s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      .kpi--toggle:hover {
+        transform: translateY(-2px);
+        border-color: rgba(240, 210, 122, 0.55);
+        box-shadow: 0 0 0 1px rgba(240, 210, 122, 0.22);
+      }
+      .quickview {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .eye-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid rgba(240, 210, 122, 0.55);
+        background: transparent;
+        color: var(--muted);
+        display: inline-grid;
+        place-items: center;
+        cursor: pointer;
+        padding: 0;
+        transition: transform 0.12s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+      }
+      .eye-btn .material-symbols-outlined {
+        font-size: 18px;
+        line-height: 1;
+        display: block;
+      }
+      .eye-btn:hover {
+        transform: translateY(-1px);
+        border-color: rgba(240, 210, 122, 0.8);
+        color: var(--text);
+        box-shadow: 0 0 0 1px rgba(240, 210, 122, 0.25);
+      }
+      .content.censored .censor-block {
+        filter: blur(10px);
+        transition: filter 0.2s ease;
+      }
 
       .kpi__label {
         font-size: 0.8rem;
@@ -739,6 +807,9 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
   loja: Loja | null = null;
   salesProfitSeries: Array<{ label: string; value: number }> = [];
+  salesRevenueSeries: Array<{ label: string; value: number }> = [];
+  salesTotalSeries: Array<{ label: string; value: number }> = [];
+  salesServiceSeries: Array<{ label: string; value: number }> = [];
   salesCountSeries: Array<{ label: string; value: number }> = [];
   salesView: 'day' | 'week' | 'month' | 'year' = 'day';
   salesRangeDays = 90;
@@ -746,22 +817,32 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   salesMetric: 'profit' | 'count' = 'profit';
   maxRangeDays = 1095;
   visibleRevenueLabel = 'R$ 0,00';
+  visibleProfitLabel = 'R$ 0,00';
+  visibleServiceRevenueLabel = 'R$ 0,00';
+  visibleTotalLabel = 'R$ 0,00';
   visibleTicketLabel = 'R$ 0,00';
   visibleSalesCount = 0;
   visibleInventoryCostLabel = 'R$ 0,00';
   visibleInventorySaleLabel = 'R$ 0,00';
+  inventoryProfitLabel = 'R$ 0,00';
+  profitKpiMode: 'inventory' | 'period' = 'inventory';
+  isCensored = true;
   topSetores: Array<{ nome: string; valor: number; percentual: number }> = [];
   private chart: echarts.ECharts | null = null;
   private zoomRange: { startIndex: number; endIndex: number } | null = null;
   private produtosMap = new Map<number, Produto>();
   private setoresMap = new Map<number, Setor>();
   private dailyStart: Date | null = null;
-  private dailyTotals: number[] = [];
+  private dailyRevenueTotals: number[] = [];
+  private dailyProfitTotals: number[] = [];
+  private dailyServiceTotals: number[] = [];
+  private dailyTotalTotals: number[] = [];
   private dailyCounts: number[] = [];
   private salesBucketStarts: Date[] = [];
   private salesBucketEnds: Date[] = [];
   private topSetoresTimer: number | null = null;
   private lastTopSetoresKey = '';
+  private inventoryLoaded = false;
   salesLoading = false;
   salesError = '';
 
@@ -808,6 +889,14 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       event.preventDefault();
       this.abrirUltimaVenda();
     }
+  }
+
+  toggleProfitMode(): void {
+    this.profitKpiMode = this.profitKpiMode === 'inventory' ? 'period' : 'inventory';
+  }
+
+  toggleCensor(): void {
+    this.isCensored = !this.isCensored;
   }
 
   toggleMenuFuncionarios(ev?: MouseEvent): void {
@@ -900,10 +989,13 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     const dataFim = this.formatIsoDate(today);
 
     this.pdv.list(dataInicio, dataFim, [2], 0, 2000).subscribe({
-      next: (items) => this.buildSalesSeries(items, start, this.maxRangeDays),
+      next: (items) => this.loadSaleProfitsAndBuild(items, start, this.maxRangeDays),
       error: () => {
         this.salesError = 'Falha ao carregar vendas.';
         this.salesProfitSeries = [];
+        this.salesRevenueSeries = [];
+        this.salesTotalSeries = [];
+        this.salesServiceSeries = [];
         this.salesCountSeries = [];
         this.renderChart();
       },
@@ -911,8 +1003,61 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  private buildSalesSeries(items: SaleListItemDto[], start: Date, days: number): void {
-    const totals: number[] = Array.from({ length: days }, () => 0);
+  private loadSaleProfitsAndBuild(items: SaleListItemDto[], start: Date, days: number): void {
+    if (!items.length) {
+      this.buildSalesSeries(items, start, days, new Map(), new Map(), new Map());
+      return;
+    }
+
+    if (!this.produtosMap.size && !this.inventoryLoaded) {
+      this.loadInventorySnapshot().finally(() => {
+        this.loadSaleProfitsAndBuild(items, start, days);
+      });
+      return;
+    }
+
+    const maxDetails = 400;
+    const itemsToFetch = items.slice(0, maxDetails);
+    if (items.length > maxDetails) {
+      this.salesError = 'Muitos registros: lucro/serviços calculados parcialmente.';
+    }
+
+    from(itemsToFetch)
+      .pipe(
+        mergeMap((sale) => this.pdv.getDetails(sale.id).pipe(catchError(() => of(null))), 6),
+        toArray()
+      )
+      .subscribe({
+        next: (details) => {
+          const profitById = new Map<number, number>();
+          const productById = new Map<number, number>();
+          const serviceById = new Map<number, number>();
+          details.forEach((detail) => {
+            if (!detail) return;
+            const profit = this.calculateSaleProfit(detail);
+            const productRevenue = this.calculateSaleProductRevenue(detail);
+            productById.set(detail.id, productRevenue);
+            profitById.set(detail.id, profit);
+            serviceById.set(detail.id, this.calculateSaleServiceRevenue(detail));
+          });
+          this.buildSalesSeries(items, start, days, profitById, productById, serviceById);
+        },
+        error: () => this.buildSalesSeries(items, start, days, new Map(), new Map(), new Map()),
+      });
+  }
+
+  private buildSalesSeries(
+    items: SaleListItemDto[],
+    start: Date,
+    days: number,
+    profitById: Map<number, number>,
+    productById: Map<number, number>,
+    serviceById: Map<number, number>
+  ): void {
+    const revenueTotals: number[] = Array.from({ length: days }, () => 0);
+    const profitTotals: number[] = Array.from({ length: days }, () => 0);
+    const serviceTotals: number[] = Array.from({ length: days }, () => 0);
+    const totalTotals: number[] = Array.from({ length: days }, () => 0);
     const counts: number[] = Array.from({ length: days }, () => 0);
 
     items.forEach((s) => {
@@ -920,12 +1065,23 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       if (Number.isNaN(d.getTime())) return;
       const idx = Math.floor((this.startOfDay(d).getTime() - this.startOfDay(start).getTime()) / 86400000);
       if (idx < 0 || idx >= days) return;
-      totals[idx] += Number(s.total || 0);
+      const fallbackRevenue = Number(s.total || 0);
+      const productRevenue = productById.get(s.id) ?? fallbackRevenue;
+      const serviceRevenue = serviceById.get(s.id) ?? 0;
+      const totalRevenue = productRevenue + serviceRevenue;
+      const profit = profitById.get(s.id) ?? productRevenue;
+      revenueTotals[idx] += productRevenue;
+      profitTotals[idx] += profit;
+      serviceTotals[idx] += serviceRevenue;
+      totalTotals[idx] += totalRevenue;
       counts[idx] += 1;
     });
 
     this.dailyStart = this.startOfDay(start);
-    this.dailyTotals = totals;
+    this.dailyRevenueTotals = revenueTotals;
+    this.dailyProfitTotals = profitTotals;
+    this.dailyServiceTotals = serviceTotals;
+    this.dailyTotalTotals = totalTotals;
     this.dailyCounts = counts;
     this.rebuildViewSeries();
 
@@ -981,12 +1137,17 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
           const p = list[0];
           const idx = typeof p?.dataIndex === 'number' ? p.dataIndex : 0;
           const countValue = this.salesCountSeries[idx]?.value ?? 0;
-          const seriesValue = Array.isArray(p?.value) ? p.value[0] : p?.value;
-          const numeric = typeof seriesValue === 'number' ? seriesValue : Number(seriesValue ?? 0);
-          const valueLabel = this.salesMetric === 'count' ? `${numeric}` : this.formatMoney(numeric);
+          const profitValue = this.salesProfitSeries[idx]?.value ?? 0;
+          const revenueValue = this.salesRevenueSeries[idx]?.value ?? 0;
+          const serviceValue = this.salesServiceSeries[idx]?.value ?? 0;
+          const totalValue = this.salesTotalSeries[idx]?.value ?? 0;
+          const revenueLabel = `Faturamento: ${this.formatMoney(revenueValue)}`;
+          const serviceLabel = `Serviços: ${this.formatMoney(serviceValue)}`;
+          const totalLabel = `Total: ${this.formatMoney(totalValue)}`;
+          const profitLabel = `Lucro: ${this.formatMoney(profitValue)}`;
           const countLabel = `Qtd: ${countValue}`;
           const dateLabel = String((p as any)?.axisValue ?? '');
-          return `${dateLabel}<br/>${valueLabel}<br/>${countLabel}`;
+          return `${dateLabel}<br/>${revenueLabel}<br/>${serviceLabel}<br/>${totalLabel}<br/>${profitLabel}<br/>${countLabel}`;
         },
       },
       xAxis: {
@@ -1129,11 +1290,15 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
       this.visibleInventoryCostLabel = this.formatMoney(totalCost);
       this.visibleInventorySaleLabel = this.formatMoney(totalSale);
+      this.inventoryProfitLabel = this.formatMoney(totalSale - totalCost);
       this.scheduleTopSetoresUpdate();
     } catch {
       this.visibleInventoryCostLabel = this.formatMoney(0);
       this.visibleInventorySaleLabel = this.formatMoney(0);
+      this.inventoryProfitLabel = this.formatMoney(0);
       this.topSetores = [];
+    } finally {
+      this.inventoryLoaded = true;
     }
   }
 
@@ -1152,27 +1317,42 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private updateVisibleProfit(): void {
     if (!this.salesProfitSeries.length || !this.salesCountSeries.length || !this.chart) {
       this.visibleRevenueLabel = this.formatMoney(0);
+      this.visibleProfitLabel = this.formatMoney(0);
+      this.visibleServiceRevenueLabel = this.formatMoney(0);
+      this.visibleTotalLabel = this.formatMoney(0);
       this.visibleTicketLabel = this.formatMoney(0);
       this.visibleSalesCount = 0;
       return;
     }
 
-    const values = this.salesProfitSeries.map((s) => s.value);
+    const profitValues = this.salesProfitSeries.map((s) => s.value);
+    const revenueValues = this.salesRevenueSeries.map((s) => s.value);
+    const serviceValues = this.salesServiceSeries.map((s) => s.value);
+    const totalValues = this.salesTotalSeries.map((s) => s.value);
     const counts = this.salesCountSeries.map((s) => s.value);
-    const range = this.zoomRange ?? { startIndex: 0, endIndex: values.length - 1 };
-    const startIndex = Math.max(0, Math.min(range.startIndex - 1, values.length - 1));
-    const endIndex = Math.max(startIndex, Math.min(range.endIndex + 1, values.length - 1));
+    const range = this.zoomRange ?? { startIndex: 0, endIndex: profitValues.length - 1 };
+    const startIndex = Math.max(0, Math.min(range.startIndex - 1, profitValues.length - 1));
+    const endIndex = Math.max(startIndex, Math.min(range.endIndex + 1, profitValues.length - 1));
 
-    let sum = 0;
+    let profitSum = 0;
+    let revenueSum = 0;
+    let serviceSum = 0;
+    let totalSum = 0;
     let countSum = 0;
     for (let i = startIndex; i <= endIndex; i += 1) {
-      sum += Number(values[i] ?? 0);
+      profitSum += Number(profitValues[i] ?? 0);
+      revenueSum += Number(revenueValues[i] ?? 0);
+      serviceSum += Number(serviceValues[i] ?? 0);
+      totalSum += Number(totalValues[i] ?? 0);
       countSum += Number(counts[i] ?? 0);
     }
 
-    this.visibleRevenueLabel = this.formatMoney(sum);
+    this.visibleRevenueLabel = this.formatMoney(revenueSum);
+    this.visibleProfitLabel = this.formatMoney(profitSum);
+    this.visibleServiceRevenueLabel = this.formatMoney(serviceSum);
+    this.visibleTotalLabel = this.formatMoney(totalSum);
     this.visibleSalesCount = countSum;
-    const ticket = countSum > 0 ? sum / countSum : 0;
+    const ticket = countSum > 0 ? revenueSum / countSum : 0;
     this.visibleTicketLabel = this.formatMoney(ticket);
     this.scheduleTopSetoresUpdate();
   }
@@ -1225,19 +1405,25 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private rebuildViewSeries(): void {
-    if (!this.dailyStart || !this.dailyTotals.length) {
+    if (!this.dailyStart || !this.dailyProfitTotals.length) {
       this.salesProfitSeries = [];
       this.salesCountSeries = [];
+      this.salesRevenueSeries = [];
+      this.salesServiceSeries = [];
+      this.salesTotalSeries = [];
       this.salesBucketStarts = [];
       this.salesBucketEnds = [];
       return;
     }
 
-    const buckets = new Map<string, { start: Date; profit: number; count: number }>();
-    for (let i = 0; i < this.dailyTotals.length; i += 1) {
+    const buckets = new Map<string, { start: Date; profit: number; revenue: number; service: number; total: number; count: number }>();
+    for (let i = 0; i < this.dailyProfitTotals.length; i += 1) {
       const day = new Date(this.dailyStart);
       day.setDate(day.getDate() + i);
-      const profit = Number(this.dailyTotals[i] ?? 0);
+      const profit = Number(this.dailyProfitTotals[i] ?? 0);
+      const revenue = Number(this.dailyRevenueTotals[i] ?? 0);
+      const service = Number(this.dailyServiceTotals[i] ?? 0);
+      const total = Number(this.dailyTotalTotals[i] ?? 0);
       const count = Number(this.dailyCounts[i] ?? 0);
 
       let key = '';
@@ -1258,9 +1444,12 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       const current = buckets.get(key);
       if (current) {
         current.profit += profit;
+        current.revenue += revenue;
+        current.service += service;
+        current.total += total;
         current.count += count;
       } else {
-        buckets.set(key, { start: bucketStart, profit, count });
+        buckets.set(key, { start: bucketStart, profit, revenue, service, total, count });
       }
     }
 
@@ -1269,6 +1458,9 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       .sort((a, b) => a.start.getTime() - b.start.getTime());
 
     this.salesProfitSeries = ordered.map((item) => ({ label: item.label, value: item.profit }));
+    this.salesRevenueSeries = ordered.map((item) => ({ label: item.label, value: item.revenue }));
+    this.salesServiceSeries = ordered.map((item) => ({ label: item.label, value: item.service }));
+    this.salesTotalSeries = ordered.map((item) => ({ label: item.label, value: item.total }));
     this.salesCountSeries = ordered.map((item) => ({ label: item.label, value: item.count }));
     this.salesBucketStarts = ordered.map((item) => this.startOfDay(item.start));
     this.salesBucketEnds = ordered.map((item) => this.getBucketEnd(item.start));
@@ -1329,23 +1521,32 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private applyTopSetores(items: SaleItemSummaryDto[]): void {
     const totals = new Map<number, number>();
+    const serviceKey = -1;
     let totalSum = 0;
 
     items.forEach((item) => {
-      if (!this.isProdutoItem(item)) return;
-      const produto = this.produtosMap.get(item.produtoId);
-      if (!produto) return;
-      const setorId = produto.setorFilhoId;
-      if (!Number.isFinite(setorId)) return;
       const valor = Number(item.total ?? 0);
       if (!valor) return;
-      totals.set(setorId, (totals.get(setorId) ?? 0) + valor);
-      totalSum += valor;
+
+      if (this.isProdutoItem(item)) {
+        const produto = this.produtosMap.get(item.produtoId);
+        if (!produto) return;
+        const setorId = produto.setorFilhoId;
+        if (!Number.isFinite(setorId)) return;
+        totals.set(setorId, (totals.get(setorId) ?? 0) + valor);
+        totalSum += valor;
+        return;
+      }
+
+      if (this.isServiceItem(item)) {
+        totals.set(serviceKey, (totals.get(serviceKey) ?? 0) + valor);
+        totalSum += valor;
+      }
     });
 
     this.topSetores = Array.from(totals.entries())
       .map(([id, valor]) => ({
-        nome: this.setoresMap.get(id)?.nome ?? `Setor ${id}`,
+        nome: id === serviceKey ? 'Serviços' : this.setoresMap.get(id)?.nome ?? `Setor ${id}`,
         valor,
         percentual: totalSum > 0 ? (valor / totalSum) * 100 : 0,
       }))
@@ -1356,6 +1557,60 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private isProdutoItem(item: SaleItemSummaryDto): boolean {
     const tipo = String(item.tipo ?? '').trim().toLowerCase();
     return tipo === 'produto' || tipo === 'product';
+  }
+
+  private isServiceItem(item: SaleItemSummaryDto): boolean {
+    const tipo = String(item.tipo ?? '').trim().toLowerCase();
+    return tipo === 'servico' || tipo === 'serviço' || tipo === 'service';
+  }
+
+  private calculateSaleProfit(detail: SaleDetailsDto): number {
+    if (!detail?.items?.length) return 0;
+    let costTotal = 0;
+    let productTotal = 0;
+    for (const item of detail.items) {
+      const qtd = Number(item?.quantity ?? 0);
+      if (qtd <= 0) continue;
+      const tipo = String(item?.tipo ?? '').trim().toLowerCase();
+      const isProduct = tipo === 'produto' || tipo === 'product';
+      if (!isProduct) continue;
+      const produto = this.produtosMap.get(Number(item?.produtoId));
+      const cost = produto ? Number(produto.precoCusto ?? 0) : 0;
+      costTotal += cost * qtd;
+      const unit = Number(item?.unitPrice ?? 0);
+      productTotal += unit * qtd;
+    }
+    return productTotal - costTotal;
+  }
+
+  private calculateSaleProductRevenue(detail: SaleDetailsDto): number {
+    if (!detail?.items?.length) return 0;
+    let total = 0;
+    for (const item of detail.items) {
+      const tipo = String(item?.tipo ?? '').trim().toLowerCase();
+      const isProduct = tipo === 'produto' || tipo === 'product';
+      if (!isProduct) continue;
+      const qtd = Number(item?.quantity ?? 0);
+      if (qtd <= 0) continue;
+      const unit = Number(item?.unitPrice ?? 0);
+      total += unit * qtd;
+    }
+    return total;
+  }
+
+  private calculateSaleServiceRevenue(detail: SaleDetailsDto): number {
+    if (!detail?.items?.length) return 0;
+    let total = 0;
+    for (const item of detail.items) {
+      const tipo = String(item?.tipo ?? '').trim().toLowerCase();
+      const isService = tipo === 'servico' || tipo === 'serviço' || tipo === 'service';
+      if (!isService) continue;
+      const qtd = Number(item?.quantity ?? 0);
+      if (qtd <= 0) continue;
+      const unit = Number(item?.unitPrice ?? 0);
+      total += unit * qtd;
+    }
+    return total;
   }
 
   private abrirUltimaVenda(): void {
