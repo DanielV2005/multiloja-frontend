@@ -41,7 +41,7 @@ export interface EstoqueMovimentoDialogData {
       <div class="title">
         <h2>Movimentar estoque</h2>
         <p class="subtitle">
-          Produto: <strong>{{ produto?.nome }}</strong>
+          Produto: <strong>{{ produto.nome }}</strong>
         </p>
       </div>
 

@@ -38,7 +38,7 @@ export interface EstoqueTransferenciaDialogData {
       <div class="title">
         <h2>Transferir estoque</h2>
         <p class="subtitle">
-          Produto origem: <strong>{{ produto?.nome }}</strong>
+          Produto origem: <strong>{{ produto.nome }}</strong>
         </p>
       </div>
 

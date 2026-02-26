@@ -1,10 +1,10 @@
 // src/app/features/loja/painel-loja.component.ts
-import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, HostListener, NgZone, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { firstValueFrom, forkJoin, from, of } from 'rxjs';
-import { catchError, mergeMap, toArray } from 'rxjs/operators';
+import { firstValueFrom, forkJoin, from, of, Subject } from 'rxjs';
+import { catchError, mergeMap, takeUntil, toArray, timeout } from 'rxjs/operators';
 import * as echarts from 'echarts';
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
@@ -50,7 +50,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
             type="button"
             class="tab"
             (click)="toggleMenuInventario($event)"
-            [class.disabled]="!loja"
+            [class.disabled]="!lojaId"
           >
             <span class="material-symbols-outlined">inventory_2</span>
             <span>Inventário</span>
@@ -80,7 +80,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
 
         <!-- MENU FUNCIONÁRIOS -->
         <div class="menu-func" (click)="$event.stopPropagation()">
-          <button class="tab" type="button" (click)="toggleMenuFuncionarios($event)" [class.disabled]="!loja">
+          <button class="tab" type="button" (click)="toggleMenuFuncionarios($event)" [class.disabled]="!lojaId">
             <span class="material-symbols-outlined">group</span>
             <span>Funcionários</span>
             <span class="material-symbols-outlined caret">
@@ -103,7 +103,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
 
         <!-- MENU RELATÓRIOS -->
         <div class="menu-rel" (click)="$event.stopPropagation()">
-          <button class="tab" type="button" (click)="toggleMenuRelatorios($event)" [class.disabled]="!loja">
+          <button class="tab" type="button" (click)="toggleMenuRelatorios($event)" [class.disabled]="!lojaId">
             <span class="material-symbols-outlined">receipt_long</span>
             <span>Relatórios</span>
             <span class="material-symbols-outlined caret">
@@ -120,32 +120,27 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
         </div>
 
         <!-- PDV -->
-        <button class="tab" type="button" (click)="irParaPdv()" [class.disabled]="!loja">
+        <button class="tab" type="button" (click)="irParaPdv()" [class.disabled]="!lojaId">
           <span class="material-symbols-outlined">point_of_sale</span>
           <span>PDV</span>
         </button>
       </nav>
 
       <!-- CONTEÚDO -->
-      <main class="content" [class.censored]="isCensored">
+      <main class="content">
         <div class="card chart">
           <header class="card__header">
             <h3>Painel geral</h3>
             <small class="muted quickview">
               {{ loja?.nome || 'Loja selecionada' }} — visão rápida
-              <button type="button" class="eye-btn" (click)="toggleCensor()" [attr.aria-pressed]="isCensored">
-                <span class="material-symbols-outlined">
-                  {{ isCensored ? 'visibility_off' : 'visibility' }}
-                </span>
-              </button>
             </small>
           </header>
 
           <div class="overview censor-block">
             <div class="kpis">
               <div class="kpi">
-                <span class="kpi__label">Faturamento</span>
-                <strong class="kpi__value">{{ visibleRevenueLabel }}</strong>
+                <span class="kpi__label">Total das Vendas</span>
+                <strong class="kpi__value">{{ visibleTotalLabel }}</strong>
                 <small class="muted">Periodo: {{ salesRangeLabel }}</small>
               </div>
               <div class="kpi">
@@ -245,6 +240,27 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                 <small class="muted">Lucro no período visível: {{ visibleProfitLabel }}</small>
               </div>
               <div class="card__actions">
+                <button
+                  class="btn-secondary icon-btn"
+                  type="button"
+                  (click)="toggleSectorChart()"
+                  [attr.aria-pressed]="showSectorChart"
+                  title="Alternar grÃ¡fico"
+                >
+                  <span class="material-symbols-outlined">bar_chart</span>
+                </button>
+                <button
+                  class="btn-secondary icon-btn"
+                  type="button"
+                  (click)="toggleSectorChartMode()"
+                  [disabled]="!showSectorChart"
+                  [attr.aria-pressed]="sectorChartMode === 'line'"
+                  title="Alternar modelo"
+                >
+                  <span class="material-symbols-outlined">
+                    {{ sectorChartMode === 'line' ? 'show_chart' : 'pie_chart' }}
+                  </span>
+                </button>
                 <button class="btn-secondary" type="button" (click)="refreshSalesChart()" [disabled]="salesLoading">
                   Atualizar
                 </button>
@@ -260,7 +276,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                 <span class="muted">Vendas finalizadas</span>
                 <span class="muted">Periodo: {{ salesRangeLabel }}</span>
               </div>
-              <div class="range">
+              <div class="range" *ngIf="!showSectorChart">
                 <button class="range-btn" type="button" [class.active]="salesView === 'day'" (click)="setSalesView('day')">
                   Dias
                 </button>
@@ -274,7 +290,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                   Anos
                 </button>
               </div>
-              <div class="range">
+              <div class="range" *ngIf="!showSectorChart">
                 <button class="range-btn" type="button" [class.active]="salesMetric === 'profit'" (click)="setSalesMetric('profit')">
                   Lucro
                 </button>
@@ -282,7 +298,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                   Quantidade
                 </button>
               </div>
-              <div class="range">
+              <div class="range" *ngIf="!showSectorChart">
                 <button class="range-btn" type="button" [class.active]="salesRangeDays === 7" (click)="setSalesRange(7)">
                   1 semana
                 </button>
@@ -527,33 +543,12 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
         align-items: center;
         gap: 8px;
       }
-      .eye-btn {
-        width: 28px;
-        height: 28px;
-        border-radius: 999px;
-        border: 1px solid rgba(240, 210, 122, 0.55);
-        background: transparent;
-        color: var(--muted);
+      .icon-btn {
+        width: 36px;
+        height: 36px;
+        padding: 0;
         display: inline-grid;
         place-items: center;
-        cursor: pointer;
-        padding: 0;
-        transition: transform 0.12s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
-      }
-      .eye-btn .material-symbols-outlined {
-        font-size: 18px;
-        line-height: 1;
-        display: block;
-      }
-      .eye-btn:hover {
-        transform: translateY(-1px);
-        border-color: rgba(240, 210, 122, 0.8);
-        color: var(--text);
-        box-shadow: 0 0 0 1px rgba(240, 210, 122, 0.25);
-      }
-      .content.censored .censor-block {
-        filter: blur(10px);
-        transition: filter 0.2s ease;
       }
 
       .kpi__label {
@@ -806,11 +801,16 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('salesChart') salesChartEl?: ElementRef<HTMLDivElement>;
 
   loja: Loja | null = null;
+  lojaId = 0;
   salesProfitSeries: Array<{ label: string; value: number }> = [];
   salesRevenueSeries: Array<{ label: string; value: number }> = [];
   salesTotalSeries: Array<{ label: string; value: number }> = [];
   salesServiceSeries: Array<{ label: string; value: number }> = [];
   salesCountSeries: Array<{ label: string; value: number }> = [];
+  sectorChartData: Array<{ id: number; name: string; value: number }> = [];
+  sectorLineSeries: Array<{ id: number; name: string; data: number[] }> = [];
+  private sectorLineLoading = false;
+  private lastSectorLineKey = '';
   salesView: 'day' | 'week' | 'month' | 'year' = 'day';
   salesRangeDays = 90;
   salesRangeLabel = '3 meses';
@@ -826,10 +826,17 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   visibleInventorySaleLabel = 'R$ 0,00';
   inventoryProfitLabel = 'R$ 0,00';
   profitKpiMode: 'inventory' | 'period' = 'inventory';
-  isCensored = true;
   topSetores: Array<{ nome: string; valor: number; percentual: number }> = [];
+  private ngZone = inject(NgZone);
+  private destroy$ = new Subject<void>();
+  private salesCancel$ = new Subject<void>();
+  private salesDetailsCache = new Map<number, SaleDetailsDto>();
+  private renderScheduled = false;
   private chart: echarts.ECharts | null = null;
+  showSectorChart = false;
+  sectorChartMode: 'pie' | 'line' = 'pie';
   private zoomRange: { startIndex: number; endIndex: number } | null = null;
+  private isRenderingChart = false;
   private produtosMap = new Map<number, Produto>();
   private setoresMap = new Map<number, Setor>();
   private dailyStart: Date | null = null;
@@ -842,6 +849,10 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private salesBucketEnds: Date[] = [];
   private topSetoresTimer: number | null = null;
   private lastTopSetoresKey = '';
+  private topSetoresLoading = false;
+  private topSetoresPending = false;
+  private salesLoadToken = 0;
+  private salesLoadTimer: number | null = null;
   private inventoryLoaded = false;
   salesLoading = false;
   salesError = '';
@@ -853,16 +864,18 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get('id'));
     if (!Number.isFinite(id)) return;
+    this.lojaId = id;
+    this.salesDetailsCache.clear();
 
-    this.api.loja(id).subscribe({
+    this.api.loja(id).pipe(timeout(8000), takeUntil(this.destroy$)).subscribe({
       next: (l) => {
         this.loja = l;
-        this.loadInventorySnapshot();
+        void this.loadInventorySnapshot().finally(() => {
+          this.loadSalesChart();
+        });
       },
       error: () => (this.loja = null),
     });
-
-    this.loadSalesChart();
   }
 
   ngAfterViewInit(): void {
@@ -870,9 +883,21 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+    this.salesCancel$.next();
+    this.salesCancel$.complete();
     this.chart?.dispose();
     this.chart = null;
     window.removeEventListener('resize', this.handleResize);
+    if (this.topSetoresTimer) {
+      window.clearTimeout(this.topSetoresTimer);
+      this.topSetoresTimer = null;
+    }
+    if (this.salesLoadTimer) {
+      window.clearTimeout(this.salesLoadTimer);
+      this.salesLoadTimer = null;
+    }
   }
 
   @HostListener('document:click')
@@ -895,13 +920,28 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.profitKpiMode = this.profitKpiMode === 'inventory' ? 'period' : 'inventory';
   }
 
-  toggleCensor(): void {
-    this.isCensored = !this.isCensored;
+  toggleSectorChart(): void {
+    this.showSectorChart = !this.showSectorChart;
+    if (this.showSectorChart && !this.sectorChartData.length) {
+      this.loadTopSetoresBySales();
+    }
+    if (this.showSectorChart && this.sectorChartMode === 'line') {
+      this.loadSectorLineChart();
+    }
+    this.renderChart();
+  }
+
+  toggleSectorChartMode(): void {
+    this.sectorChartMode = this.sectorChartMode === 'pie' ? 'line' : 'pie';
+    if (this.showSectorChart && this.sectorChartMode === 'line') {
+      this.loadSectorLineChart();
+    }
+    this.renderChart();
   }
 
   toggleMenuFuncionarios(ev?: MouseEvent): void {
     ev?.stopPropagation();
-    if (!this.loja) return;
+    if (!this.lojaId) return;
     this.menuInventarioAberto = false;
     this.menuRelatoriosAberto = false;
     this.menuFuncionariosAberto = !this.menuFuncionariosAberto;
@@ -909,7 +949,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
   toggleMenuInventario(ev?: MouseEvent): void {
     ev?.stopPropagation();
-    if (!this.loja) return;
+    if (!this.lojaId) return;
     this.menuFuncionariosAberto = false;
     this.menuRelatoriosAberto = false;
     this.menuInventarioAberto = !this.menuInventarioAberto;
@@ -917,7 +957,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
   toggleMenuRelatorios(ev?: MouseEvent): void {
     ev?.stopPropagation();
-    if (!this.loja) return;
+    if (!this.lojaId) return;
     this.menuFuncionariosAberto = false;
     this.menuInventarioAberto = false;
     this.menuRelatoriosAberto = !this.menuRelatoriosAberto;
@@ -926,8 +966,8 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   irParaFuncionarios(): void {
     this.menuFuncionariosAberto = false;
     this.menuInventarioAberto = false;
-    if (!this.loja?.id) return;
-    this.router.navigate(['/loja', this.loja.id, 'funcionarios']);
+    if (!this.lojaId) return;
+    this.router.navigate(['/loja', this.lojaId, 'funcionarios']);
   }
 
   abrirCadastroFuncionario(): void {
@@ -952,14 +992,14 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
   irParaEstoqueViaMenu(): void {
     this.menuInventarioAberto = false;
-    if (!this.loja?.id) return;
-    this.router.navigate(['/loja', this.loja.id, 'estoque']);
+    if (!this.lojaId) return;
+    this.router.navigate(['/loja', this.lojaId, 'estoque']);
   }
 
   irParaServicos(): void {
     this.menuInventarioAberto = false;
-    if (!this.loja?.id) return;
-    this.router.navigate(['/loja', this.loja.id, 'servicos']);
+    if (!this.lojaId) return;
+    this.router.navigate(['/loja', this.lojaId, 'servicos']);
   }
 
   irParaPdv(): void {
@@ -967,19 +1007,33 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.menuInventarioAberto = false;
     this.menuRelatoriosAberto = false;
 
-    if (!this.loja?.id) return;
-    this.router.navigate(['/loja', this.loja.id, 'pdv']);
+    if (!this.lojaId) return;
+    this.router.navigate(['/loja', this.lojaId, 'pdv']);
   }
 
   irParaRelatorioVendas(): void {
     this.menuRelatoriosAberto = false;
-    if (!this.loja?.id) return;
-    this.router.navigate(['/loja', this.loja.id, 'relatorios', 'vendas']);
+    if (!this.lojaId) return;
+    this.router.navigate(['/loja', this.lojaId, 'relatorios', 'vendas']);
   }
 
   private loadSalesChart(): void {
+    if (this.salesLoading) return;
     this.salesLoading = true;
     this.salesError = '';
+    this.salesLoadToken += 1;
+    const token = this.salesLoadToken;
+    this.salesCancel$.next();
+    if (this.salesLoadTimer) {
+      window.clearTimeout(this.salesLoadTimer);
+    }
+    this.salesLoadTimer = window.setTimeout(() => {
+      if (this.salesLoading && token === this.salesLoadToken) {
+        this.salesError = 'Falha ao carregar vendas.';
+        this.salesLoading = false;
+        this.scheduleRender();
+      }
+    }, 12000);
 
     const today = new Date();
     const start = new Date(today);
@@ -988,7 +1042,9 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     const dataInicio = this.formatIsoDate(start);
     const dataFim = this.formatIsoDate(today);
 
-    this.pdv.list(dataInicio, dataFim, [2], 0, 2000).subscribe({
+    this.pdv.list(dataInicio, dataFim, [2], 0, 2000)
+      .pipe(timeout(8000), takeUntil(this.salesCancel$), takeUntil(this.destroy$))
+      .subscribe({
       next: (items) => this.loadSaleProfitsAndBuild(items, start, this.maxRangeDays),
       error: () => {
         this.salesError = 'Falha ao carregar vendas.';
@@ -997,13 +1053,14 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
         this.salesTotalSeries = [];
         this.salesServiceSeries = [];
         this.salesCountSeries = [];
-        this.renderChart();
+        this.salesLoading = false;
+        this.scheduleRender();
       },
-      complete: () => (this.salesLoading = false),
     });
   }
 
   private loadSaleProfitsAndBuild(items: SaleListItemDto[], start: Date, days: number): void {
+    const token = this.salesLoadToken;
     if (!items.length) {
       this.buildSalesSeries(items, start, days, new Map(), new Map(), new Map());
       return;
@@ -1016,31 +1073,62 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    const maxDetails = 400;
+    const maxDetails = 200;
     const itemsToFetch = items.slice(0, maxDetails);
     if (items.length > maxDetails) {
       this.salesError = 'Muitos registros: lucro/serviços calculados parcialmente.';
     }
 
-    from(itemsToFetch)
+    const cachedDetails: SaleDetailsDto[] = [];
+    const missingItems: SaleListItemDto[] = [];
+    itemsToFetch.forEach((sale) => {
+      const cached = this.salesDetailsCache.get(sale.id);
+      if (cached) {
+        cachedDetails.push(cached);
+      } else {
+        missingItems.push(sale);
+      }
+    });
+
+    if (!missingItems.length) {
+      this.buildSalesSeries(
+        items,
+        start,
+        days,
+        this.buildProfitMap(cachedDetails),
+        this.buildProductMap(cachedDetails),
+        this.buildServiceMap(cachedDetails)
+      );
+      return;
+    }
+
+    from(missingItems)
       .pipe(
-        mergeMap((sale) => this.pdv.getDetails(sale.id).pipe(catchError(() => of(null))), 6),
-        toArray()
+        mergeMap(
+          (sale) => this.pdv.getDetails(sale.id).pipe(timeout(8000), catchError(() => of(null))),
+          2
+        ),
+        toArray(),
+        takeUntil(this.salesCancel$),
+        takeUntil(this.destroy$)
       )
       .subscribe({
         next: (details) => {
-          const profitById = new Map<number, number>();
-          const productById = new Map<number, number>();
-          const serviceById = new Map<number, number>();
+          if (token !== this.salesLoadToken) return;
           details.forEach((detail) => {
-            if (!detail) return;
-            const profit = this.calculateSaleProfit(detail);
-            const productRevenue = this.calculateSaleProductRevenue(detail);
-            productById.set(detail.id, productRevenue);
-            profitById.set(detail.id, profit);
-            serviceById.set(detail.id, this.calculateSaleServiceRevenue(detail));
+            if (detail) {
+              this.salesDetailsCache.set(detail.id, detail);
+              cachedDetails.push(detail);
+            }
           });
-          this.buildSalesSeries(items, start, days, profitById, productById, serviceById);
+          this.buildSalesSeries(
+            items,
+            start,
+            days,
+            this.buildProfitMap(cachedDetails),
+            this.buildProductMap(cachedDetails),
+            this.buildServiceMap(cachedDetails)
+          );
         },
         error: () => this.buildSalesSeries(items, start, days, new Map(), new Map(), new Map()),
       });
@@ -1086,41 +1174,67 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.rebuildViewSeries();
 
     this.salesLoading = false;
-    this.renderChart();
+    this.scheduleRender();
   }
 
   private initChart(): void {
-    if (!this.salesChartEl?.nativeElement || this.chart) return;
-    this.chart = echarts.init(this.salesChartEl.nativeElement, undefined, { renderer: 'canvas' });
-    this.renderChart();
-    window.addEventListener('resize', this.handleResize);
-    this.chart.on('datazoom', (evt: any) => {
-      this.captureZoomRange(evt);
-      this.updateVisibleProfit();
+    const el = this.salesChartEl?.nativeElement;
+    if (!el || this.chart) return;
+    this.ngZone.runOutsideAngular(() => {
+      this.chart = echarts.init(el, undefined, { renderer: 'canvas' });
+      this.renderChart();
+      this.chart.on('datazoom', (evt: any) => {
+        if (this.isRenderingChart) return;
+        this.captureZoomRange(evt);
+        this.ngZone.run(() => this.updateVisibleProfit());
+      });
     });
+    window.addEventListener('resize', this.handleResize);
   }
 
   private handleResize = (): void => {
     this.chart?.resize();
   };
 
+  private scheduleRender(): void {
+    if (this.renderScheduled) return;
+    this.renderScheduled = true;
+    window.requestAnimationFrame(() => {
+      this.renderScheduled = false;
+      this.renderChart();
+    });
+  }
+
   private renderChart(): void {
     if (!this.chart) return;
+    if (this.isRenderingChart) return;
+    this.isRenderingChart = true;
+    try {
+    if (this.showSectorChart) {
+      if (this.sectorChartMode === 'line') {
+        this.renderSectorLineChart();
+      } else {
+        this.renderSectorChart();
+      }
+      return;
+    }
     const activeSeries = this.salesMetric === 'count' ? this.salesCountSeries : this.salesProfitSeries;
     if (!activeSeries.length) {
       this.chart.clear();
       return;
     }
 
-    const labels = activeSeries.map((s) => s.label);
-    const values = activeSeries.map((s) => s.value);
-    const endIndex = labels.length - 1;
-    const rangeBuckets = this.getRangeBuckets();
-    const startIndex = Math.max(0, endIndex - (rangeBuckets - 1));
+      const labels = activeSeries.map((s) => s.label);
+      const values = activeSeries.map((s) => s.value);
+      const endIndex = labels.length - 1;
+      const rangeBuckets = this.getRangeBuckets();
+      const startIndex = Math.max(0, endIndex - (rangeBuckets - 1));
+      const showSymbols = labels.length <= 60;
 
-    const option: echarts.EChartsOption = {
-      backgroundColor: 'transparent',
-      grid: { left: 64, right: 24, top: 16, bottom: 32 },
+      const option: echarts.EChartsOption = {
+        backgroundColor: 'transparent',
+        animation: false,
+        grid: { left: 64, right: 24, top: 16, bottom: 32 },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'cross' },
@@ -1177,22 +1291,164 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
           moveOnMouseMove: true,
         },
       ],
-      series: [
-        {
-          type: 'line',
-          data: values,
-          showSymbol: true,
-          symbolSize: 6,
-          lineStyle: { color: '#f5df7b', width: 2 },
-          itemStyle: { color: '#f5df7b' },
-          areaStyle: { color: 'rgba(240, 210, 122, 0.25)' },
-        },
-      ],
-    };
+        series: [
+          {
+            type: 'line',
+            data: values,
+            showSymbol: showSymbols,
+            symbolSize: showSymbols ? 6 : 0,
+            sampling: 'lttb',
+            smooth: false,
+            progressive: 3000,
+            progressiveThreshold: 2000,
+            lineStyle: { color: '#f5df7b', width: 2 },
+            itemStyle: { color: '#f5df7b' },
+            areaStyle: showSymbols ? { color: 'rgba(240, 210, 122, 0.25)' } : undefined,
+          },
+        ],
+      };
 
-    this.chart.setOption(option, true);
-    this.zoomRange = { startIndex, endIndex };
-    this.updateVisibleProfit();
+      this.ngZone.runOutsideAngular(() => {
+        this.chart?.setOption(option, true);
+      });
+      this.zoomRange = { startIndex, endIndex };
+      this.updateVisibleProfit();
+      } finally {
+        this.isRenderingChart = false;
+      }
+    }
+
+  private renderSectorChart(): void {
+    if (!this.chart) return;
+    if (!this.sectorChartData.length) {
+      this.chart.clear();
+      return;
+    }
+
+    const data = this.sectorChartData.map((s) => ({
+      name: s.name,
+      value: s.value,
+      itemStyle: { color: this.getSetorColor(s.id, s.name) },
+    }));
+
+      const option: echarts.EChartsOption = {
+        backgroundColor: 'transparent',
+        animation: false,
+        tooltip: {
+        trigger: 'item',
+        backgroundColor: 'rgba(8, 12, 24, 0.95)',
+        borderColor: 'rgba(240, 210, 122, 0.6)',
+        textStyle: { color: '#e5e7eb' },
+        formatter: (p: any) => {
+          const name = p?.name ?? '';
+          const value = this.formatMoney(Number(p?.value ?? 0));
+          const percent = Number(p?.percent ?? 0).toFixed(1);
+          return `${name}<br/>${value}<br/>${percent}%`;
+        },
+      },
+        series: [
+          {
+            type: 'pie',
+          radius: ['35%', '70%'],
+          center: ['50%', '52%'],
+          avoidLabelOverlap: true,
+          label: { color: '#e5e7eb' },
+          labelLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.45)' } },
+          data,
+        },
+        ],
+      };
+
+      this.ngZone.runOutsideAngular(() => {
+        this.chart?.setOption(option, true);
+      });
+    }
+
+  private renderSectorLineChart(): void {
+    if (!this.chart) return;
+    if (!this.sectorLineSeries.length || !this.salesBucketStarts.length) {
+      this.chart.clear();
+      return;
+    }
+
+    const labels = this.salesBucketStarts.map((d, idx) => this.salesProfitSeries[idx]?.label ?? this.formatShortDate(d));
+    const showSymbols = labels.length <= 60;
+    const option: echarts.EChartsOption = {
+      backgroundColor: 'transparent',
+      animation: false,
+      grid: { left: 64, right: 24, top: 16, bottom: 32 },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross' },
+        backgroundColor: 'rgba(8, 12, 24, 0.95)',
+        borderColor: 'rgba(240, 210, 122, 0.6)',
+        textStyle: { color: '#e5e7eb' },
+        formatter: (params) => {
+          const list = Array.isArray(params) ? params : [params];
+          const lines = list.map((p: any) => `${p.seriesName}: ${this.formatMoney(Number(p.value ?? 0))}`);
+          const dateLabel = String((list[0] as any)?.axisValue ?? '');
+          return `${dateLabel}<br/>${lines.join('<br/>')}`;
+        },
+      },
+      xAxis: {
+        type: 'category',
+        data: labels,
+        boundaryGap: false,
+        axisLabel: { color: '#94a3b8' },
+        axisLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.2)' } },
+        axisTick: { show: false },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: '#94a3b8', formatter: (value: number) => this.formatMoney(Number(value)) },
+        splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.2)' } },
+      },
+        series: this.sectorLineSeries.map((series) => ({
+          type: 'line',
+          name: series.name,
+          data: series.data,
+          showSymbol: showSymbols,
+          symbolSize: showSymbols ? 6 : 0,
+          sampling: 'lttb',
+          smooth: false,
+          progressive: 2000,
+          progressiveThreshold: 1500,
+          lineStyle: { width: 2, color: this.getSetorColor(series.id, series.name) },
+          itemStyle: { color: this.getSetorColor(series.id, series.name) },
+          areaStyle: undefined,
+        })),
+      };
+
+    this.ngZone.runOutsideAngular(() => {
+      this.chart?.setOption(option, true);
+    });
+  }
+
+  private buildProfitMap(details: SaleDetailsDto[]): Map<number, number> {
+    const map = new Map<number, number>();
+    details.forEach((detail) => {
+      const profit = this.calculateSaleProfit(detail);
+      map.set(detail.id, profit);
+    });
+    return map;
+  }
+
+  private buildProductMap(details: SaleDetailsDto[]): Map<number, number> {
+    const map = new Map<number, number>();
+    details.forEach((detail) => {
+      const productRevenue = this.calculateSaleProductRevenue(detail);
+      map.set(detail.id, productRevenue);
+    });
+    return map;
+  }
+
+  private buildServiceMap(details: SaleDetailsDto[]): Map<number, number> {
+    const map = new Map<number, number>();
+    details.forEach((detail) => {
+      const serviceRevenue = this.calculateSaleServiceRevenue(detail);
+      map.set(detail.id, serviceRevenue);
+    });
+    return map;
   }
 
   private startOfDay(d: Date): Date {
@@ -1260,8 +1516,8 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const [produtos, setores] = await Promise.all([
-        firstValueFrom(this.produtos.listarPorLoja(this.loja.id)),
-        firstValueFrom(this.setores.listar()),
+        firstValueFrom(this.produtos.listarPorLoja(this.loja.id).pipe(timeout(8000))),
+        firstValueFrom(this.setores.listar().pipe(timeout(8000))),
       ]);
 
       this.produtosMap.clear();
@@ -1354,7 +1610,6 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.visibleSalesCount = countSum;
     const ticket = countSum > 0 ? revenueSum / countSum : 0;
     this.visibleTicketLabel = this.formatMoney(ticket);
-    this.scheduleTopSetoresUpdate();
   }
 
 
@@ -1380,7 +1635,12 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       endIndex = Math.max(startIndex, Math.floor((batch.end / 100) * total));
     }
 
-    this.zoomRange = { startIndex, endIndex };
+    const nextRange = { startIndex, endIndex };
+    if (this.zoomRange && this.zoomRange.startIndex === nextRange.startIndex && this.zoomRange.endIndex === nextRange.endIndex) {
+      return;
+    }
+    this.zoomRange = nextRange;
+    this.scheduleTopSetoresUpdate();
   }
 
   private getRangeBuckets(): number {
@@ -1464,6 +1724,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.salesCountSeries = ordered.map((item) => ({ label: item.label, value: item.count }));
     this.salesBucketStarts = ordered.map((item) => this.startOfDay(item.start));
     this.salesBucketEnds = ordered.map((item) => this.getBucketEnd(item.start));
+    this.scheduleTopSetoresUpdate();
   }
 
   private getBucketEnd(start: Date): Date {
@@ -1502,6 +1763,11 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private loadTopSetoresBySales(): void {
     if (!this.loja?.id) return;
     if (!this.produtosMap.size || !this.setoresMap.size) return;
+    if (this.salesLoading) return;
+    if (this.topSetoresLoading) {
+      this.topSetoresPending = true;
+      return;
+    }
     const range = this.getVisibleRangeDates();
     if (!range) return;
 
@@ -1511,10 +1777,110 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     if (key === this.lastTopSetoresKey) return;
     this.lastTopSetoresKey = key;
 
-    this.pdv.listItemSummary(dataInicio, dataFim, [2]).subscribe({
-      next: (items) => this.applyTopSetores(items),
+    this.topSetoresLoading = true;
+    this.topSetoresPending = false;
+    this.pdv.listItemSummary(dataInicio, dataFim, [2]).pipe(timeout(8000)).subscribe({
+      next: (items) => {
+        this.applyTopSetores(items);
+        if (this.showSectorChart && this.sectorChartMode === 'line') {
+          this.loadSectorLineChart();
+        }
+      },
       error: () => {
         this.topSetores = [];
+      },
+      complete: () => {
+        this.topSetoresLoading = false;
+        if (this.topSetoresPending) {
+          this.loadTopSetoresBySales();
+        }
+      },
+    });
+  }
+
+  private loadSectorLineChart(): void {
+    if (!this.salesBucketStarts.length || !this.salesBucketEnds.length) return;
+    const range = this.getVisibleRangeDates();
+    if (!range) return;
+
+    const labels = this.salesBucketStarts;
+    const startIndex = Math.max(0, this.salesBucketStarts.findIndex(d => d >= range.start));
+    const endIndex = Math.max(startIndex, this.salesBucketEnds.findIndex(d => d >= range.end));
+    let bucketStarts = labels.slice(startIndex, endIndex + 1);
+    let bucketEnds = this.salesBucketEnds.slice(startIndex, endIndex + 1);
+
+    const maxBuckets = 12;
+    if (bucketStarts.length > maxBuckets) {
+      bucketStarts = bucketStarts.slice(-maxBuckets);
+      bucketEnds = bucketEnds.slice(-maxBuckets);
+    }
+
+    const key = `${this.salesView}:${bucketStarts[0]?.toISOString()}:${bucketEnds[bucketEnds.length - 1]?.toISOString()}`;
+    if (key === this.lastSectorLineKey || this.sectorLineLoading) return;
+    this.lastSectorLineKey = key;
+    this.sectorLineLoading = true;
+
+    const requests = bucketStarts.map((start, idx) => {
+      const end = bucketEnds[idx] ?? start;
+      return this.pdv
+        .listItemSummary(this.formatIsoDate(start), this.formatIsoDate(end), [2])
+        .pipe(timeout(8000), catchError(() => of([])));
+    });
+
+    forkJoin(requests).subscribe({
+      next: (responses) => {
+      const sectorIds = new Set<number>();
+      const buckets: Array<Map<number, number>> = responses.map((items) => {
+        const map = new Map<number, number>();
+        items.forEach((item) => {
+          const valor = Number(item.total ?? 0);
+          if (!valor) return;
+          if (this.isProdutoItem(item)) {
+            const produto = this.produtosMap.get(item.produtoId);
+            if (!produto) return;
+            const setorId = produto.setorFilhoId;
+            if (!Number.isFinite(setorId)) return;
+            map.set(setorId, (map.get(setorId) ?? 0) + valor);
+            sectorIds.add(setorId);
+            return;
+          }
+          if (this.isServiceItem(item)) {
+            const serviceKey = -1;
+            map.set(serviceKey, (map.get(serviceKey) ?? 0) + valor);
+            sectorIds.add(serviceKey);
+          }
+        });
+        return map;
+      });
+
+      const totals = new Map<number, number>();
+      sectorIds.forEach((id) => totals.set(id, 0));
+      buckets.forEach((bucket) => {
+        bucket.forEach((valor, id) => {
+          totals.set(id, (totals.get(id) ?? 0) + valor);
+        });
+      });
+
+      const orderedIds = Array.from(totals.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([id]) => id);
+
+      this.sectorLineSeries = orderedIds.map((id) => {
+        const name = id === -1 ? 'Serviços' : this.setoresMap.get(id)?.nome ?? `Setor ${id}`;
+        const data = buckets.map((bucket) => Number(bucket.get(id) ?? 0));
+        return { id, name, data };
+      });
+
+      if (this.showSectorChart && this.sectorChartMode === 'line') {
+        this.renderChart();
+      }
+      },
+      complete: () => {
+        this.sectorLineLoading = false;
+      },
+      error: () => {
+        this.sectorLineLoading = false;
       },
     });
   }
@@ -1544,14 +1910,26 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    this.topSetores = Array.from(totals.entries())
+    const entries = Array.from(totals.entries())
       .map(([id, valor]) => ({
         nome: id === serviceKey ? 'Serviços' : this.setoresMap.get(id)?.nome ?? `Setor ${id}`,
         valor,
         percentual: totalSum > 0 ? (valor / totalSum) * 100 : 0,
+        id,
       }))
-      .sort((a, b) => b.valor - a.valor)
-      .slice(0, 5);
+      .sort((a, b) => b.valor - a.valor);
+
+    this.topSetores = entries.slice(0, 5).map(({ id, nome, valor, percentual }) => ({
+      nome,
+      valor,
+      percentual,
+    }));
+
+    this.sectorChartData = entries.map(({ id, nome, valor }) => ({
+      id,
+      name: nome,
+      value: valor,
+    }));
   }
 
   private isProdutoItem(item: SaleItemSummaryDto): boolean {
@@ -1562,6 +1940,27 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private isServiceItem(item: SaleItemSummaryDto): boolean {
     const tipo = String(item.tipo ?? '').trim().toLowerCase();
     return tipo === 'servico' || tipo === 'serviço' || tipo === 'service';
+  }
+
+  private getSetorColor(id: number, name: string): string {
+    const palette = [
+      '#f5df7b',
+      '#5bd1d7',
+      '#8b9bff',
+      '#f58f7b',
+      '#7bf5a6',
+      '#c67bff',
+      '#f5b97b',
+      '#7bd3f5',
+      '#f57bc1',
+      '#9bf57b',
+    ];
+    const seed = id === -1 ? 99991 : id;
+    let hash = seed;
+    for (let i = 0; i < name.length; i += 1) {
+      hash = (hash * 31 + name.charCodeAt(i)) % 100000;
+    }
+    return palette[Math.abs(hash) % palette.length];
   }
 
   private calculateSaleProfit(detail: SaleDetailsDto): number {
@@ -1647,4 +2046,5 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     return date;
   }
 }
+
 

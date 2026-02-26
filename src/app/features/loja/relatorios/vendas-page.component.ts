@@ -681,7 +681,7 @@ interface ReturnLine {
             <div class="return-card" *ngFor="let ret of details.returns; trackBy: trackReturn">
               <div class="return-head">
                 <strong>{{ fmtDate(ret.createdAt) }}</strong>
-                <span class="muted">Itens: {{ ret.items?.length || 0 }}</span>
+                <span class="muted">Itens: {{ ret.items.length }}</span>
               </div>
               <div class="muted" *ngIf="ret.reason">{{ ret.reason }}</div>
               <ul>

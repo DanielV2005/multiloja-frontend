@@ -9,7 +9,8 @@
     "context": ["/api/Lojas", "/api/Setores", "/api/Funcionarios"],
     "target": "https://localhost:7055",
     "secure": false,
-    "changeOrigin": true
+    "changeOrigin": true,
+    "logLevel": "debug"
   },
   {
     "context": [
