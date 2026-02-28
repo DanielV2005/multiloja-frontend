@@ -191,20 +191,25 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
             </div>
 
             <div class="overview-panels">
-              <div class="panel">
-                <div class="panel__header">
-                  <h4>Resumo por setor</h4>
-                  <span class="muted">Top 5</span>
-                </div>
-                <div class="panel__body">
-                  <div class="sector-row" *ngFor="let setor of topSetores">
-                    <span>{{ setor.nome }}</span>
-                    <span class="muted">{{ formatMoney(setor.valor) }}</span>
-                    <span class="badge">{{ setor.percentual.toFixed(0) }}%</span>
+                <div class="panel">
+                  <div class="panel__header">
+                    <h4>Resumo por setor</h4>
+                    <span class="muted">Ranking</span>
                   </div>
-                  <div class="muted" *ngIf="!topSetores.length">Sem dados de setores ainda.</div>
+                  <div class="panel__body panel__body--scroll">
+                    <ol class="sector-list" *ngIf="topSetores.length; else emptySetores">
+                      <li class="sector-row" *ngFor="let setor of topSetores; let i = index">
+                        <span class="rank">{{ i + 1 }}</span>
+                        <span class="name">{{ setor.nome }}</span>
+                        <span class="muted value">{{ formatMoney(setor.valor) }}</span>
+                        <span class="badge">{{ setor.percentual.toFixed(0) }}%</span>
+                      </li>
+                    </ol>
+                    <ng-template #emptySetores>
+                      <div class="muted">Sem dados de setores ainda.</div>
+                    </ng-template>
+                  </div>
                 </div>
-              </div>
 
               <div class="panel">
                 <div class="panel__header">
@@ -667,12 +672,43 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
         min-height: 120px;
       }
 
+      .panel__body--scroll {
+        max-height: calc((5 * 28px) + (4 * 8px));
+        overflow-y: auto;
+        padding-right: 4px;
+        overscroll-behavior: contain;
+      }
+
+      .sector-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 8px;
+      }
+
       .sector-row {
         display: grid;
-        grid-template-columns: 1fr auto auto;
+        grid-template-columns: 24px 1fr auto auto;
         gap: 10px;
         align-items: center;
         font-size: 0.85rem;
+        min-height: 28px;
+      }
+
+      .sector-row .rank {
+        color: #94a3b8;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .sector-row .name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sector-row .value {
+        font-variant-numeric: tabular-nums;
       }
 
       .badge {
@@ -2196,11 +2232,11 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       }))
       .sort((a, b) => b.valor - a.valor);
 
-    this.topSetores = entries.slice(0, 5).map(({ id, nome, valor, percentual }) => ({
-      nome,
-      valor,
-      percentual,
-    }));
+      this.topSetores = entries.map(({ id, nome, valor, percentual }) => ({
+        nome,
+        valor,
+        percentual,
+      }));
 
     this.sectorChartData = entries.map(({ id, nome, valor }) => ({
       id,

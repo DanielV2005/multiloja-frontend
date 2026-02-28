@@ -2313,12 +2313,12 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     if (timer) {
       clearTimeout(timer);
       this.quantityTimers.delete(item.key);
-      const pending = this.quantityPending.get(item.key);
-      if (pending != null) {
-        const parsed = this.parseDecimal(pending);
-        if (Number.isFinite(parsed) && parsed > 0) {
-          this.aplicarQuantidade(item, parsed);
-        }
+    }
+    const pending = this.quantityPending.get(item.key);
+    if (pending != null) {
+      const parsed = this.parseDecimal(pending);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        this.aplicarQuantidade(item, parsed);
       }
     }
   }
@@ -2480,7 +2480,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private isPartialDecimal(value: string): boolean {
     const raw = value.trim();
     if (!raw) return true;
-    return /^[0-9]+([,.])?$/.test(raw);
+    return /^[0-9]+[,.]$/.test(raw);
   }
 
   fmtMoney(value: number | string | null | undefined): string {
