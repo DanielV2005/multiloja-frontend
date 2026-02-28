@@ -234,10 +234,15 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
             <header class="card__header">
               <div class="censor-block">
                 <h3>Vendas gerais</h3>
-                <small class="muted">Faturamento no período visível: {{ visibleRevenueLabel }}</small>
-                <small class="muted">Serviços no período visível: {{ visibleServiceRevenueLabel }}</small>
-                <small class="muted">Total no período visível: {{ visibleTotalLabel }}</small>
-                <small class="muted">Lucro no período visível: {{ visibleProfitLabel }}</small>
+                <small class="muted metrics-inline">
+                  <strong>Faturamento</strong> no período visível: {{ visibleRevenueLabel }}
+                  <span class="sep">|</span>
+                  <strong>Serviços</strong> no período visível: {{ visibleServiceRevenueLabel }}
+                  <span class="sep">|</span>
+                  <strong>Total</strong> no período visível: {{ visibleTotalLabel }}
+                  <span class="sep">|</span>
+                  <strong>Lucro</strong> no período visível: {{ visibleProfitLabel }}
+                </small>
               </div>
               <div class="card__actions">
                 <button
@@ -275,6 +280,20 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
               <div class="sales-chart__title">
                 <span class="muted">Vendas finalizadas</span>
                 <span class="muted">Periodo: {{ salesRangeLabel }}</span>
+                <div class="period-controls" *ngIf="!showSectorChart">
+                  <label class="period-qty">
+                    <span class="muted">Qtd.</span>
+                    <input
+                      type="number"
+                      min="1"
+                      [value]="rangeQty"
+                      (input)="onRangeQtyInput($event)"
+                    />
+                  </label>
+                  <button class="range-btn" type="button" (click)="toggleRangePicker()">
+                    Intervalo
+                  </button>
+                </div>
               </div>
               <div class="range" *ngIf="!showSectorChart">
                 <button class="range-btn" type="button" [class.active]="salesView === 'day'" (click)="setSalesView('day')">
@@ -292,28 +311,35 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
               </div>
               <div class="range" *ngIf="!showSectorChart">
                 <button class="range-btn" type="button" [class.active]="salesMetric === 'profit'" (click)="setSalesMetric('profit')">
-                  Lucro
+                  Total
                 </button>
                 <button class="range-btn" type="button" [class.active]="salesMetric === 'count'" (click)="setSalesMetric('count')">
                   Quantidade
                 </button>
               </div>
-              <div class="range" *ngIf="!showSectorChart">
-                <button class="range-btn" type="button" [class.active]="salesRangeDays === 7" (click)="setSalesRange(7)">
-                  1 semana
-                </button>
-                <button class="range-btn" type="button" [class.active]="salesRangeDays === 30" (click)="setSalesRange(30)">
-                  1 mes
-                </button>
-                <button class="range-btn" type="button" [class.active]="salesRangeDays === 90" (click)="setSalesRange(90)">
-                  3 meses
-                </button>
-                <button class="range-btn" type="button" [class.active]="salesRangeDays === 365" (click)="setSalesRange(365)">
-                  1 ano
-                </button>
-              </div>
               <span class="muted" *ngIf="salesLoading">Carregando...</span>
               <span class="muted error" *ngIf="salesError">{{ salesError }}</span>
+            </div>
+
+            <div class="range-picker" *ngIf="rangePickerOpen && !showSectorChart">
+              <label>
+                <span class="muted">De</span>
+                <input
+                  type="date"
+                  [value]="rangeStart"
+                  (input)="rangeStart = $any($event.target).value"
+                />
+              </label>
+              <label>
+                <span class="muted">AtÃ©</span>
+                <input
+                  type="date"
+                  [value]="rangeEnd"
+                  (input)="rangeEnd = $any($event.target).value"
+                />
+              </label>
+              <button class="range-btn" type="button" (click)="applyRangePicker()">Aplicar</button>
+              <button class="range-btn" type="button" (click)="toggleRangePicker()">Fechar</button>
             </div>
 
             <div class="line-chart">
@@ -562,6 +588,52 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
         font-weight: 600;
       }
 
+      .period-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: 14px;
+      }
+
+      .period-qty {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .period-qty input {
+        width: 72px;
+        height: 30px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(8, 12, 24, 0.7);
+        color: var(--text);
+        padding: 0 8px;
+      }
+
+      .range-picker {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 10px;
+        align-items: center;
+        margin: 8px 0 4px;
+      }
+
+      .range-picker label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .range-picker input {
+        height: 30px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(8, 12, 24, 0.7);
+        color: var(--text);
+        padding: 0 8px;
+      }
+
       .overview-panels {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -786,6 +858,16 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
       .muted {
         color: var(--muted);
       }
+
+      .metrics-inline strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .metrics-inline .sep {
+        margin: 0 6px;
+        opacity: 0.6;
+      }
     `,
   ],
 })
@@ -814,6 +896,10 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   salesView: 'day' | 'week' | 'month' | 'year' = 'day';
   salesRangeDays = 90;
   salesRangeLabel = '3 meses';
+  rangeQty = 90;
+  rangePickerOpen = false;
+  rangeStart = '';
+  rangeEnd = '';
   salesMetric: 'profit' | 'count' = 'profit';
   maxRangeDays = 1095;
   visibleRevenueLabel = 'R$ 0,00';
@@ -833,9 +919,11 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private salesDetailsCache = new Map<number, SaleDetailsDto>();
   private renderScheduled = false;
   private chart: echarts.ECharts | null = null;
+  private wheelHandler: ((ev: WheelEvent) => void) | null = null;
   showSectorChart = false;
   sectorChartMode: 'pie' | 'line' = 'pie';
   private zoomRange: { startIndex: number; endIndex: number } | null = null;
+  private manualRange: { start: Date; end: Date } | null = null;
   private isRenderingChart = false;
   private produtosMap = new Map<number, Produto>();
   private setoresMap = new Map<number, Setor>();
@@ -866,6 +954,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!Number.isFinite(id)) return;
     this.lojaId = id;
     this.salesDetailsCache.clear();
+    this.syncRangeQtyFromDays();
 
     this.api.loja(id).pipe(timeout(8000), takeUntil(this.destroy$)).subscribe({
       next: (l) => {
@@ -889,6 +978,10 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.salesCancel$.complete();
     this.chart?.dispose();
     this.chart = null;
+    if (this.wheelHandler && this.salesChartEl?.nativeElement) {
+      this.salesChartEl.nativeElement.removeEventListener('wheel', this.wheelHandler);
+    }
+    this.wheelHandler = null;
     window.removeEventListener('resize', this.handleResize);
     if (this.topSetoresTimer) {
       window.clearTimeout(this.topSetoresTimer);
@@ -1188,6 +1281,26 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
         this.captureZoomRange(evt);
         this.ngZone.run(() => this.updateVisibleProfit());
       });
+      if (!this.wheelHandler) {
+        this.wheelHandler = (ev: WheelEvent) => {
+          if (!this.chart) return;
+          ev.preventDefault();
+          const { start, end } = this.getZoomPercent();
+          const step = 2;
+          const delta = Math.sign(ev.deltaY);
+          let nextStart = start;
+          let nextEnd = end;
+          if (delta > 0) {
+            nextStart = start - step;
+            nextEnd = end + step;
+          } else if (delta < 0) {
+            nextStart = start + step;
+            nextEnd = end - step;
+          }
+          this.setZoomPercent(nextStart, nextEnd);
+        };
+      }
+      el.addEventListener('wheel', this.wheelHandler, { passive: false });
     });
     window.addEventListener('resize', this.handleResize);
   }
@@ -1195,6 +1308,32 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private handleResize = (): void => {
     this.chart?.resize();
   };
+
+  private getZoomPercent(): { start: number; end: number } {
+    const option = (this.chart?.getOption() as any) ?? {};
+    const zooms = Array.isArray(option.dataZoom) ? option.dataZoom : [];
+    const match = zooms.find((z: any) => z.xAxisIndex === 0);
+    const start = Number(match?.start ?? 0);
+    const end = Number(match?.end ?? 100);
+    return { start, end };
+  }
+
+  private setZoomPercent(start: number, end: number): void {
+    if (!this.chart) return;
+    let s = Math.max(0, Math.min(100, start));
+    let e = Math.max(0, Math.min(100, end));
+    if (e - s < 2) {
+      const mid = (s + e) / 2;
+      s = Math.max(0, mid - 1);
+      e = Math.min(100, mid + 1);
+    }
+    this.chart.dispatchAction({
+      type: 'dataZoom',
+      xAxisIndex: 0,
+      start: s,
+      end: e,
+    } as any);
+  }
 
   private scheduleRender(): void {
     if (this.renderScheduled) return;
@@ -1218,7 +1357,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       return;
     }
-    const activeSeries = this.salesMetric === 'count' ? this.salesCountSeries : this.salesProfitSeries;
+    const activeSeries = this.salesMetric === 'count' ? this.salesCountSeries : this.salesTotalSeries;
     if (!activeSeries.length) {
       this.chart.clear();
       return;
@@ -1226,21 +1365,20 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
       const labels = activeSeries.map((s) => s.label);
       const values = activeSeries.map((s) => s.value);
-      const endIndex = labels.length - 1;
-      const rangeBuckets = this.getRangeBuckets();
-      const startIndex = Math.max(0, endIndex - (rangeBuckets - 1));
-      const showSymbols = labels.length <= 60;
+      const { startIndex, endIndex } = this.getZoomIndexes(labels);
+      const showSymbols = true;
 
       const option: echarts.EChartsOption = {
         backgroundColor: 'transparent',
         animation: false,
-        grid: { left: 64, right: 24, top: 16, bottom: 32 },
-      tooltip: {
+        grid: { left: 64, right: 28, top: 16, bottom: 48 },
+        tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'cross' },
+        axisPointer: { type: 'line' },
         backgroundColor: 'rgba(8, 12, 24, 0.95)',
         borderColor: 'rgba(240, 210, 122, 0.6)',
         textStyle: { color: '#e5e7eb' },
+        confine: true,
         valueFormatter: (value) => {
           const first = Array.isArray(value) ? value[0] : value;
           const numeric = typeof first === 'number' ? first : Number(first ?? 0);
@@ -1284,9 +1422,10 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       dataZoom: [
         {
           type: 'inside',
+          xAxisIndex: 0,
           startValue: labels[startIndex],
           endValue: labels[endIndex],
-          zoomOnMouseWheel: true,
+          zoomOnMouseWheel: 'ctrl',
           moveOnMouseWheel: true,
           moveOnMouseMove: true,
         },
@@ -1297,12 +1436,17 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
             data: values,
             showSymbol: showSymbols,
             symbolSize: showSymbols ? 6 : 0,
+            symbol: 'circle',
             sampling: 'lttb',
             smooth: false,
             progressive: 3000,
             progressiveThreshold: 2000,
             lineStyle: { color: '#f5df7b', width: 2 },
             itemStyle: { color: '#f5df7b' },
+            emphasis: {
+              focus: 'series',
+              lineStyle: { width: 3 },
+            },
             areaStyle: showSymbols ? { color: 'rgba(240, 210, 122, 0.25)' } : undefined,
           },
         ],
@@ -1565,9 +1709,88 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       view === 'year' ? 365 :
       90;
     this.salesRangeDays = defaultRange;
+    this.manualRange = null;
+    this.syncRangeQtyFromDays();
     this.salesRangeLabel = this.rangeLabel(this.salesRangeDays);
     this.rebuildViewSeries();
     this.renderChart();
+  }
+
+  onRangeQtyInput(event: Event): void {
+    const raw = Number((event.target as HTMLInputElement | null)?.value ?? 0);
+    if (!Number.isFinite(raw)) return;
+    const qty = Math.max(1, Math.floor(raw));
+    this.rangeQty = qty;
+    this.manualRange = null;
+    this.salesRangeDays = qty * this.daysPerUnit(this.salesView);
+    this.salesRangeLabel = this.rangeLabel(this.salesRangeDays);
+    this.rebuildViewSeries();
+    this.renderChart();
+  }
+
+  toggleRangePicker(): void {
+    this.rangePickerOpen = !this.rangePickerOpen;
+    if (this.rangePickerOpen && !this.rangeStart && !this.rangeEnd) {
+      const end = new Date();
+      const start = new Date(end);
+      start.setDate(start.getDate() - (this.salesRangeDays - 1));
+      this.rangeStart = this.formatIsoDate(start);
+      this.rangeEnd = this.formatIsoDate(end);
+    }
+  }
+
+  applyRangePicker(): void {
+    const start = this.parseDateInput(this.rangeStart);
+    const end = this.parseDateInput(this.rangeEnd);
+    if (!start || !end) return;
+    const rangeStart = start <= end ? start : end;
+    const rangeEnd = start <= end ? end : start;
+    this.manualRange = { start: rangeStart, end: rangeEnd };
+    const diffDays = Math.max(
+      1,
+      Math.floor((this.startOfDay(rangeEnd).getTime() - this.startOfDay(rangeStart).getTime()) / 86400000) + 1
+    );
+    this.salesRangeDays = diffDays;
+    this.rangeQty = this.countBucketsForRange(rangeStart, rangeEnd);
+    this.salesRangeLabel = this.rangeLabel(this.salesRangeDays);
+    this.rebuildViewSeries();
+    this.renderChart();
+    this.rangePickerOpen = false;
+  }
+
+  private syncRangeQtyFromDays(): void {
+    this.rangeQty = Math.max(1, Math.round(this.salesRangeDays / this.daysPerUnit(this.salesView)));
+  }
+
+  private daysPerUnit(view: 'day' | 'week' | 'month' | 'year'): number {
+    if (view === 'week') return 7;
+    if (view === 'month') return 30;
+    if (view === 'year') return 365;
+    return 1;
+  }
+
+  private parseDateInput(value: string): Date | null {
+    if (!value) return null;
+    const date = new Date(`${value}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private countBucketsForRange(start: Date, end: Date): number {
+    if (this.salesView === 'day') {
+      return Math.max(
+        1,
+        Math.floor((this.startOfDay(end).getTime() - this.startOfDay(start).getTime()) / 86400000) + 1
+      );
+    }
+    if (this.salesView === 'week') {
+      const s = this.startOfWeek(start);
+      const e = this.startOfWeek(end);
+      return Math.max(1, Math.floor((e.getTime() - s.getTime()) / (86400000 * 7)) + 1);
+    }
+    if (this.salesView === 'month') {
+      return Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1);
+    }
+    return Math.max(1, end.getFullYear() - start.getFullYear() + 1);
   }
 
   private updateVisibleProfit(): void {
@@ -1578,6 +1801,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       this.visibleTotalLabel = this.formatMoney(0);
       this.visibleTicketLabel = this.formatMoney(0);
       this.visibleSalesCount = 0;
+      this.salesRangeLabel = this.rangeLabel(this.salesRangeDays);
       return;
     }
 
@@ -1610,11 +1834,15 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.visibleSalesCount = countSum;
     const ticket = countSum > 0 ? revenueSum / countSum : 0;
     this.visibleTicketLabel = this.formatMoney(ticket);
+    this.updateSalesRangeLabelFromZoom();
   }
 
 
   private captureZoomRange(evt: any): void {
     if (!this.salesProfitSeries.length) return;
+    if (this.manualRange) {
+      this.manualRange = null;
+    }
     const labels = this.salesProfitSeries.map((s) => s.label);
     const total = labels.length - 1;
     const batch = Array.isArray(evt?.batch) ? evt.batch[0] : evt;
@@ -1641,27 +1869,76 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     this.zoomRange = nextRange;
     this.scheduleTopSetoresUpdate();
+    this.updateSalesRangeLabelFromZoom();
+  }
+
+  private updateSalesRangeLabelFromZoom(): void {
+    const total = this.salesBucketStarts.length;
+    if (!total) {
+      this.salesRangeLabel = this.rangeLabel(this.salesRangeDays);
+      return;
+    }
+
+    const range = this.zoomRange ?? { startIndex: 0, endIndex: total - 1 };
+    const startIndex = Math.max(0, Math.min(range.startIndex, total - 1));
+    const endIndex = Math.max(startIndex, Math.min(range.endIndex, total - 1));
+    const count = Math.max(1, endIndex - startIndex + 1);
+    this.rangeQty = count;
+
+    if (this.salesView === 'day') {
+      this.salesRangeLabel = count === 1 ? '1 dia' : `${count} dias`;
+      return;
+    }
+    if (this.salesView === 'week') {
+      this.salesRangeLabel = count === 1 ? '1 semana' : `${count} semanas`;
+      return;
+    }
+    if (this.salesView === 'month') {
+      this.salesRangeLabel = count === 1 ? '1 mês' : `${count} meses`;
+      return;
+    }
+    this.salesRangeLabel = count === 1 ? '1 ano' : `${count} anos`;
   }
 
   private getRangeBuckets(): number {
-    const days = this.salesRangeDays;
-    if (this.salesView === 'day') return days;
-    if (this.salesView === 'week') {
-      if (days <= 7) return 1;
-      if (days <= 30) return 4;
-      if (days <= 90) return 13;
-      return 52;
+    return Math.max(1, Math.floor(this.rangeQty || 1));
+  }
+
+  private updateSalesRangeLabel(): void {
+    return;
+  }
+
+  private getZoomIndexes(labels: string[]): { startIndex: number; endIndex: number } {
+    const endIndex = Math.max(0, labels.length - 1);
+    if (this.manualRange && this.salesBucketStarts.length) {
+      const startBound = this.startOfDay(this.manualRange.start);
+      const endBound = this.startOfDay(this.manualRange.end);
+      let startIndex = 0;
+      let endIndexRange = endIndex;
+
+      for (let i = 0; i < this.salesBucketEnds.length; i += 1) {
+        if (this.salesBucketEnds[i] >= startBound) {
+          startIndex = i;
+          break;
+        }
+      }
+
+      for (let i = this.salesBucketStarts.length - 1; i >= 0; i -= 1) {
+        if (this.salesBucketStarts[i] <= endBound) {
+          endIndexRange = i;
+          break;
+        }
+      }
+
+      if (endIndexRange < startIndex) {
+        endIndexRange = startIndex;
+      }
+      return { startIndex, endIndex: endIndexRange };
     }
-    if (this.salesView === 'month') {
-      if (days <= 7) return 1;
-      if (days <= 30) return 1;
-      if (days <= 90) return 3;
-      return 12;
-    }
-    if (days <= 7) return 1;
-    if (days <= 30) return 2;
-    if (days <= 90) return 3;
-    return 5;
+
+    const rangeBuckets = this.getRangeBuckets();
+    const startIndex = Math.max(0, endIndex - (rangeBuckets - 1));
+    return { startIndex, endIndex };
   }
 
   private rebuildViewSeries(): void {
