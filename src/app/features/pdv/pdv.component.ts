@@ -478,6 +478,33 @@ interface DraftPayload {
       box-shadow: none !important;
     }
 
+    :host ::ng-deep .ml-dialog-alert .dialog-card{
+      border-color: rgba(239, 68, 68, 0.8);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.7), 0 0 38px rgba(239, 68, 68, 0.35);
+    }
+    :host ::ng-deep .ml-dialog-alert .avatar{
+      color: #150808;
+      background: linear-gradient(180deg, rgba(255,255,255,.35), transparent 40%),
+                  linear-gradient(135deg,#FCA5A5 0%,#EF4444 45%,#B91C1C 100%);
+    }
+    :host ::ng-deep .ml-dialog-alert .btn-gold{
+      border-color:#7f1d1d !important;
+      color:#150808 !important;
+      background:
+        radial-gradient(120% 100% at 50% -40%, rgba(255,255,255,.20), transparent 60%),
+        linear-gradient(180deg,#FCA5A5 0%, #EF4444 60%, #B91C1C 100%) !important;
+      box-shadow:0 8px 20px rgba(239,68,68,.35), inset 0 -2px 0 rgba(0,0,0,.18) !important;
+    }
+    :host ::ng-deep .ml-dialog-alert .btn-outline{
+      border-color: rgba(239, 68, 68, 0.55) !important;
+      color: #fecaca !important;
+    }
+    :host ::ng-deep .ml-dialog-alert .btn-outline:hover{
+      background: rgba(239, 68, 68, 0.12) !important;
+      color: #fff1f2 !important;
+      border-color: rgba(239, 68, 68, 0.8) !important;
+    }
+
     .layout{
       display:grid;
       grid-template-columns: minmax(280px, 1.1fr) minmax(320px, 1.4fr) minmax(280px, 1fr);
@@ -944,6 +971,8 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private quantityTimers = new Map<string, number>();
   private quantityErrors = new Map<string, string>();
   private quantityPending = new Map<string, number | string | null>();
+  private stockWarningAt = new Map<string, number>();
+  private stockWarningOpen = false;
   private stockByProductId = new Map<number, number>();
 
   menuOpen = false;
@@ -2301,6 +2330,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     const clamped = this.clampQuantityByStock(item, alvo);
     if (inputEl && Number.isFinite(clamped) && clamped !== alvo) {
       inputEl.value = String(clamped);
+      this.warnStockExceeded(item, alvo, clamped);
     }
     this.scheduleQuantityApply(item, clamped);
   }
@@ -2446,6 +2476,36 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     const disponivel = this.getAvailableStock(item.produtoId, item.estoque);
     const maxAllowed = item.quantity + Math.max(disponivel, 0);
     return Math.min(desired, maxAllowed);
+  }
+
+  private warnStockExceeded(item: CartItem, desired: number, clamped: number): void {
+    if (item.tipo !== 'PRODUTO' || item.estoque == null) return;
+    if (!Number.isFinite(desired) || !Number.isFinite(clamped)) return;
+    if (desired <= clamped) return;
+    if (this.stockWarningOpen) return;
+    const now = Date.now();
+    const last = this.stockWarningAt.get(item.key) ?? 0;
+    if (now - last < 1500) return;
+    this.stockWarningAt.set(item.key, now);
+    const disponivel = this.getAvailableStock(item.produtoId, item.estoque);
+    const maxAllowed = item.quantity + Math.max(disponivel, 0);
+    this.stockWarningOpen = true;
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Quantidade insuficiente',
+          message: `A quantidade maxima e ${maxAllowed}.`,
+          confirmText: 'Ok',
+          cancelText: 'Fechar',
+          icon: 'warning',
+        },
+        autoFocus: false,
+        panelClass: ['ml-dialog', 'ml-dialog-alert'],
+      })
+      .afterClosed()
+      .subscribe(() => {
+        this.stockWarningOpen = false;
+      });
   }
 
   private aplicarQuantidadeDraft(item: CartItem, novaQuantidade: number): void {
