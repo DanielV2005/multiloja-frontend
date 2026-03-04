@@ -1282,17 +1282,22 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       if (Number.isNaN(d.getTime())) return;
       const idx = Math.floor((this.startOfDay(d).getTime() - this.startOfDay(start).getTime()) / 86400000);
       if (idx < 0 || idx >= days) return;
-      const fallbackRevenue = Number(s.total || 0);
-      const productRevenue = productById.get(s.id) ?? fallbackRevenue;
-      const serviceRevenue = serviceById.get(s.id) ?? 0;
-      const totalRevenue = productRevenue + serviceRevenue;
-      const profit = profitById.get(s.id) ?? productRevenue;
-      revenueTotals[idx] += productRevenue;
-      profitTotals[idx] += profit;
-      serviceTotals[idx] += serviceRevenue;
-      totalTotals[idx] += totalRevenue;
-      counts[idx] += 1;
-    });
+        const fallbackRevenue = Number(s.total || 0);
+        const productRevenue = productById.get(s.id) ?? fallbackRevenue;
+        const serviceRevenue = serviceById.get(s.id) ?? 0;
+        const totalRevenue = productRevenue + serviceRevenue;
+        const saleSubtotal = Number(s.subtotal ?? totalRevenue);
+        const saleTotal = Number(s.total ?? totalRevenue);
+        const factor = saleSubtotal > 0 ? saleTotal / saleSubtotal : 1;
+        const productNet = productRevenue * factor;
+        const serviceNet = serviceRevenue * factor;
+        const profit = profitById.get(s.id) ?? productNet;
+        revenueTotals[idx] += productNet;
+        profitTotals[idx] += profit;
+        serviceTotals[idx] += serviceNet;
+        totalTotals[idx] += productNet + serviceNet;
+        counts[idx] += 1;
+      });
 
     this.dailyStart = this.startOfDay(start);
     this.dailyRevenueTotals = revenueTotals;
@@ -2276,24 +2281,28 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     return palette[Math.abs(hash) % palette.length];
   }
 
-  private calculateSaleProfit(detail: SaleDetailsDto): number {
-    if (!detail?.items?.length) return 0;
-    let costTotal = 0;
-    let productTotal = 0;
-    for (const item of detail.items) {
-      const qtd = Number(item?.quantity ?? 0);
-      if (qtd <= 0) continue;
-      const tipo = String(item?.tipo ?? '').trim().toLowerCase();
-      const isProduct = tipo === 'produto' || tipo === 'product';
-      if (!isProduct) continue;
-      const produto = this.produtosMap.get(Number(item?.produtoId));
-      const cost = produto ? Number(produto.precoCusto ?? 0) : 0;
-      costTotal += cost * qtd;
-      const unit = Number(item?.unitPrice ?? 0);
-      productTotal += unit * qtd;
+    private calculateSaleProfit(detail: SaleDetailsDto): number {
+      if (!detail?.items?.length) return 0;
+      let costTotal = 0;
+      let productTotal = 0;
+      for (const item of detail.items) {
+        const qtd = Number(item?.quantity ?? 0);
+        if (qtd <= 0) continue;
+        const tipo = String(item?.tipo ?? '').trim().toLowerCase();
+        const isProduct = tipo === 'produto' || tipo === 'product';
+        if (!isProduct) continue;
+        const produto = this.produtosMap.get(Number(item?.produtoId));
+        const cost = produto ? Number(produto.precoCusto ?? 0) : 0;
+        costTotal += cost * qtd;
+        const unit = Number(item?.unitPrice ?? 0);
+        productTotal += unit * qtd;
+      }
+      const subtotal = Number(detail.subtotal ?? 0);
+      const total = Number(detail.total ?? subtotal);
+      const factor = subtotal > 0 ? total / subtotal : 1;
+      const netProductRevenue = productTotal * factor;
+      return netProductRevenue - costTotal;
     }
-    return productTotal - costTotal;
-  }
 
   private calculateSaleProductRevenue(detail: SaleDetailsDto): number {
     if (!detail?.items?.length) return 0;
