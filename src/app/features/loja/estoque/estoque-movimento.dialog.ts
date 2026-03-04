@@ -90,6 +90,7 @@ export interface EstoqueMovimentoDialogData {
             <option [ngValue]="EstoqueMovimentoMotivo.Ajuste">Ajuste</option>
             <option [ngValue]="EstoqueMovimentoMotivo.Perda">Perda</option>
             <option [ngValue]="EstoqueMovimentoMotivo.Avaria">Avaria</option>
+            <option [ngValue]="EstoqueMovimentoMotivo.Defeito">Defeito</option>
             <option [ngValue]="EstoqueMovimentoMotivo.Roubo">Roubo</option>
             <option [ngValue]="EstoqueMovimentoMotivo.Vencimento">Vencimento</option>
             <option [ngValue]="EstoqueMovimentoMotivo.ConsumoInterno">Consumo interno</option>

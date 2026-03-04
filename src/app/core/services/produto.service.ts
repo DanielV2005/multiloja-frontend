@@ -64,6 +64,7 @@ export enum EstoqueMovimentoMotivo {
   Vencimento = 9,
   ConsumoInterno = 10,
   Ajuste = 11,
+  Defeito = 12,
 }
 
 export interface EstoqueMovimentoRequest {

@@ -595,6 +595,7 @@ export class EstoqueMovimentosPageComponent implements OnInit, OnDestroy {
       case EstoqueMovimentoMotivo.Venda: return 'Venda';
       case EstoqueMovimentoMotivo.Perda: return 'Perda';
       case EstoqueMovimentoMotivo.Avaria: return 'Avaria';
+      case EstoqueMovimentoMotivo.Defeito: return 'Defeito';
       case EstoqueMovimentoMotivo.Roubo: return 'Roubo';
       case EstoqueMovimentoMotivo.Vencimento: return 'Vencimento';
       case EstoqueMovimentoMotivo.ConsumoInterno: return 'Consumo interno';
