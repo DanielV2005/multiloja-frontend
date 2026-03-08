@@ -9,6 +9,7 @@ import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angu
 
 import { UsuarioService, Loja } from '../../../core/services/usuario.service';
 import { PdvService, SaleDetailsDto, SaleItemDto, SaleListItemDto, SaleReturnDto } from '../../../core/services/pdv.service';
+import { Produto, ProdutoService } from '../../../core/services/produto.service';
 
 @Component({
   standalone: true,
@@ -96,7 +97,7 @@ import { PdvService, SaleDetailsDto, SaleItemDto, SaleListItemDto, SaleReturnDto
         </p>
 
         <div *ngIf="!loading && vendas.length > 0" class="table-wrap" (scroll)="onTableScroll($event)">
-          <div class="table">
+          <div class="table scrollable">
             <div class="table-header">
               <span class="th col-data">Data</span>
               <span class="th col-atendente">Atendente</span>
@@ -359,6 +360,7 @@ export class VendasPageComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private usuarioService = inject(UsuarioService);
   private pdv = inject(PdvService);
+  private produtoService = inject(ProdutoService);
   private fb = inject(FormBuilder);
   private dialog = inject(MatDialog);
   private formSub?: Subscription;
@@ -565,18 +567,27 @@ interface VendaDetalhesDialogData {
 
 interface ReturnLineItem {
   saleItemId: number;
+  produtoId: number;
   quantity: number;
   returnedQuantity: number;
 }
 
 interface ReturnLine {
   key: string;
+  produtoId: number;
   nome: string;
   unitPrice: number;
   quantity: number;
   returnedQuantity: number;
   returnQty: number;
   items: ReturnLineItem[];
+}
+
+interface ExchangeItem {
+  produtoId: number;
+  nome: string;
+  unitPrice: number;
+  quantity: number;
 }
 
 @Component({
@@ -594,6 +605,9 @@ interface ReturnLine {
         </div>
 
         <div class="nav">
+          <button class="icon-btn" type="button" title="Imprimir comprovante" (click)="previewReceipt()">
+            <span class="material-symbols-outlined">print</span>
+          </button>
           <button class="icon-btn" type="button" (click)="navigate(-1)" [disabled]="!hasPrev()">
             <span class="material-symbols-outlined">chevron_left</span>
           </button>
@@ -639,8 +653,10 @@ interface ReturnLine {
               <span>Valor</span>
               <span>Devolver</span>
             </div>
-            <div class="table-row" *ngFor="let item of returnLines; trackBy: trackLine">
-              <span>{{ item.nome }}</span>
+              <div class="table-row" *ngFor="let item of returnLines; trackBy: trackLine">
+                <span class="name-cell">
+                  {{ item.nome }}
+                </span>
               <span>{{ item.quantity }}</span>
               <span>{{ item.returnedQuantity }}</span>
               <span>{{ remaining(item) }}</span>
@@ -660,23 +676,104 @@ interface ReturnLine {
           </div>
         </div>
 
+        <div class="section" *ngIf="returnOperation === 'Troca'">
+          <h4>Itens entregues na troca</h4>
+          <div class="exchange-list scrollable" *ngIf="exchangeItems.length; else exchangeEmpty">
+            <div class="exchange-row header">
+              <span>Produto</span>
+              <span class="num">Qtd</span>
+              <span class="num">Valor</span>
+              <span class="num">Total</span>
+              <span></span>
+            </div>
+            <div class="exchange-row" *ngFor="let item of exchangeItems; trackBy: trackExchange">
+              <span class="exchange-name">
+                {{ item.nome }}
+                <span class="tag tag-exchange">Troca</span>
+              </span>
+              <span class="num">
+                <input type="number" min="0" step="1" [(ngModel)]="item.quantity" (ngModelChange)="clampExchangeQty(item)" />
+              </span>
+              <span class="num">
+                <input type="number" min="0" step="0.01" [(ngModel)]="item.unitPrice" (ngModelChange)="clampExchangePrice(item)" />
+              </span>
+              <span class="num">R$ {{ item.quantity * item.unitPrice | number:'1.2-2' }}</span>
+              <span class="actions">
+                <button class="icon-btn" type="button" (click)="removeExchangeItem(item)">
+                  <span class="material-symbols-outlined">delete</span>
+                </button>
+              </span>
+            </div>
+          </div>
+
+          <ng-template #exchangeEmpty>
+            <div class="muted">Nenhum item adicionado para troca.</div>
+          </ng-template>
+
+          <div class="exchange-summary" *ngIf="exchangeItems.length">
+            <div>
+              <span class="label">Total troca</span>
+              <strong>R$ {{ exchangeTotal | number:'1.2-2' }}</strong>
+            </div>
+            <div>
+              <span class="label">DiferenÃ§a</span>
+              <strong [class.positive]="exchangeDelta > 0" [class.negative]="exchangeDelta < 0">
+                {{ exchangeDelta > 0 ? 'Falta pagar' : exchangeDelta < 0 ? 'Troco' : 'Sem diferenÃ§a' }}
+                {{ exchangeDelta !== 0 ? ('R$ ' + (exchangeDeltaAbs | number:'1.2-2')) : '' }}
+              </strong>
+            </div>
+          </div>
+        </div>
+
         <div class="section">
-          <h4>Motivo da devolução (opcional)</h4>
-          <div class="reason-actions">
-            <label class="chip-opt">
-              <input type="radio" name="returnType" [(ngModel)]="returnType" value="Devolução" />
-              <span>Devolução</span>
-            </label>
-            <label class="chip-opt">
-              <input type="radio" name="returnType" [(ngModel)]="returnType" value="Defeito" />
-              <span>Defeito</span>
-            </label>
+          <div class="inline-actions">
+            <div class="inline-group">
+              <span class="inline-label">Tipo da operação:</span>
+              <div class="reason-actions">
+                <label class="chip-opt">
+                  <input type="radio" name="returnOp" [(ngModel)]="returnOperation" (ngModelChange)="onReturnOperationChange()" value="Devolução" />
+                  <span>Devolução</span>
+                </label>
+                <label class="chip-opt">
+                  <input type="radio" name="returnOp" [(ngModel)]="returnOperation" (ngModelChange)="onReturnOperationChange()" value="Troca" />
+                  <span>Troca</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="inline-group">
+              <label class="chip-opt">
+                <input type="checkbox" [(ngModel)]="returnDefect" />
+                <span>Defeito</span>
+              </label>
+            </div>
           </div>
           <textarea class="reason" [(ngModel)]="returnReason" rows="2" placeholder="Ex.: cliente devolveu item"></textarea>
         </div>
 
-        <div class="section" *ngIf="details.returns?.length">
-          <h4>Devoluções registradas</h4>
+          <div class="section" *ngIf="returnOperation === 'Troca'">
+            <div class="exchange-search">
+              <input
+                type="text"
+                placeholder="Buscar produto para troca..."
+                [(ngModel)]="exchangeSearch"
+                (ngModelChange)="onExchangeSearchChange()"
+              />
+            </div>
+
+            <div class="exchange-results" *ngIf="exchangeResults.length">
+              <div class="exchange-result" *ngFor="let p of exchangeResults">
+                <div class="exchange-info">
+                  <span class="exchange-name">{{ p.nome }}</span>
+                  <span class="muted">R$ {{ p.precoVenda | number:'1.2-2' }}</span>
+                </div>
+                <button class="btn btn-outline" type="button" (click)="addExchangeItem(p)">Adicionar</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section" *ngIf="details.returns?.length">
+            <h4>Devoluções registradas</h4>
           <div class="returns">
             <div class="return-card" *ngFor="let ret of details.returns; trackBy: trackReturn">
               <div class="return-head">
@@ -707,6 +804,7 @@ interface ReturnLine {
   styles: [`
     .dialog-card{
       min-width:min(900px, 96vw);
+      max-height:min(92vh, 900px);
       background:var(--surface);
       color:var(--text);
       border:1px solid rgba(240,210,122,.7);
@@ -749,7 +847,14 @@ interface ReturnLine {
       animation:spin .8s linear infinite;
     }
     @keyframes spin{ to{ transform:rotate(360deg); } }
-    .content{ display:flex; flex-direction:column; gap:14px; }
+    .content{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      flex:1;
+      overflow-y:auto;
+      padding-right:4px;
+    }
     .section h4{ margin:0 0 8px; font-size:.95rem; }
     .table{
       border:1px solid var(--border);
@@ -757,6 +862,10 @@ interface ReturnLine {
       overflow:hidden;
       background:#050814;
       display:grid;
+    }
+    .table.scrollable{
+      max-height:240px;
+      overflow-y:auto;
     }
     .table-header, .table-row{
       display:grid;
@@ -772,10 +881,36 @@ interface ReturnLine {
       letter-spacing:.04em;
       color:var(--muted);
     }
-    .table-row{
-      border-top:1px solid rgba(148,163,184,.2);
-      font-size:.9rem;
-    }
+      .table-row{
+        border-top:1px solid rgba(148,163,184,.2);
+        font-size:.9rem;
+      }
+      .name-cell{
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+      }
+      .tags{ display:flex; gap:6px; }
+      .tag{
+        padding:2px 8px;
+        border-radius:999px;
+        font-size:.72rem;
+        border:1px solid rgba(148,163,184,.35);
+        color:var(--muted);
+      }
+      .tag-defect{
+        border-color: rgba(239,68,68,.5);
+        color:#fca5a5;
+      }
+      .tag-return{
+        border-color: rgba(56,189,248,.5);
+        color:#93c5fd;
+      }
+      .tag-exchange{
+        border-color: rgba(234,179,8,.5);
+        color:#fde68a;
+      }
     .qty-input{
       width:90px;
       height:30px;
@@ -791,6 +926,23 @@ interface ReturnLine {
       flex-wrap:wrap;
       margin-bottom:8px;
     }
+    .inline-actions{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:12px;
+      align-items:center;
+    }
+    .inline-group{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .inline-label{
+      font-size:.85rem;
+      color:var(--muted);
+    }
+    .inline-actions .reason-actions{ margin-bottom:0; }
     .chip-opt{
       display:inline-flex;
       align-items:center;
@@ -803,14 +955,88 @@ interface ReturnLine {
       cursor:pointer;
     }
     .chip-opt input{ width:14px; height:14px; }
-    .reason{
-      width:100%;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background:var(--bg);
-      color:var(--text);
-      padding:8px 10px;
-      resize:vertical;
+      .reason{
+        width:100%;
+        border-radius:10px;
+        border:1px solid var(--border);
+        background:var(--bg);
+        color:var(--text);
+        padding:8px 10px;
+        resize:vertical;
+      }
+      .exchange-search input{
+        width:100%;
+        height:38px;
+        border-radius:10px;
+        border:1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        padding: 0 10px;
+        outline: none;
+      }
+      .exchange-results{
+        margin-top:8px;
+        display:grid;
+        gap:8px;
+      }
+      .exchange-result{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        padding:8px 10px;
+        border-radius:10px;
+        border:1px solid rgba(148,163,184,.2);
+        background: rgba(15,21,40,.7);
+      }
+      .exchange-info{ display:flex; flex-direction:column; gap:4px; }
+      .exchange-list{
+        margin-top:10px;
+        border:1px solid rgba(148,163,184,.25);
+        border-radius:10px;
+        overflow:hidden;
+      }
+      .exchange-list.scrollable{
+        max-height:200px;
+        overflow-y:auto;
+      }
+      .exchange-row{
+        display:grid;
+        grid-template-columns: 1.4fr .5fr .6fr .6fr 40px;
+        gap:8px;
+        align-items:center;
+        padding:8px 10px;
+        border-bottom:1px solid rgba(148,163,184,.2);
+      }
+      .exchange-row.header{
+        font-size:.74rem;
+        text-transform:uppercase;
+        letter-spacing:.06em;
+        color:var(--muted);
+        background: rgba(15,21,40,.85);
+      }
+      .exchange-row:last-child{ border-bottom:none; }
+      .exchange-row input{
+        width:100%;
+        height:32px;
+        border-radius:8px;
+        border:1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        padding: 0 8px;
+        outline: none;
+      }
+      .exchange-summary{
+        margin-top:8px;
+        display:flex;
+        gap:16px;
+        flex-wrap:wrap;
+      }
+      .exchange-summary .label{ color:var(--muted); font-size:.85rem; }
+      .exchange-summary .positive{ color:#facc15; }
+      .exchange-summary .negative{ color:#38bdf8; }
+    @media (max-width: 900px){
+      .inline-actions{ grid-template-columns:1fr; }
     }
     .returns{
       display:grid;
@@ -873,6 +1099,8 @@ interface ReturnLine {
 })
 export class VendaDetalhesDialogComponent {
   private pdv = inject(PdvService);
+  private produtoService = inject(ProdutoService);
+  private usuarioService = inject(UsuarioService);
   private ref = inject(MatDialogRef<VendaDetalhesDialogComponent, SaleDetailsDto | undefined>);
 
   details?: SaleDetailsDto;
@@ -880,15 +1108,28 @@ export class VendaDetalhesDialogComponent {
   saving = false;
   returnLines: ReturnLine[] = [];
   returnReason = '';
-  returnType: 'Devolução' | 'Defeito' = 'Devolução';
+  returnOperation: 'Devolução' | 'Troca' = 'Devolução';
+  returnDefect = false;
+  exchangeSearch = '';
+  exchangeResults: Produto[] = [];
+  exchangeItems: ExchangeItem[] = [];
+  private exchangeTimer?: any;
 
   private saleIds: number[];
   private index: number;
+  private lojaName: string | null = null;
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: VendaDetalhesDialogData) {
     this.saleIds = data.saleIds ?? [data.saleId];
     this.index = Math.max(0, data.index ?? 0);
     this.load(this.saleIds[this.index] ?? data.saleId);
+    const lojaId = Number((data as any)?.lojaId ?? 0);
+    if (lojaId) {
+      this.usuarioService.loja(lojaId).subscribe({
+        next: (loja) => (this.lojaName = loja?.nome ?? null),
+        error: () => (this.lojaName = null),
+      });
+    }
   }
 
   hasPrev(): boolean {
@@ -910,7 +1151,11 @@ export class VendaDetalhesDialogComponent {
     this.loading = true;
     this.returnLines = [];
     this.returnReason = '';
-    this.returnType = 'Devolução';
+    this.returnOperation = 'Devolução';
+    this.returnDefect = false;
+    this.exchangeSearch = '';
+    this.exchangeResults = [];
+    this.exchangeItems = [];
     this.pdv.getDetails(saleId).subscribe({
       next: (details) => {
         this.details = details;
@@ -931,12 +1176,14 @@ export class VendaDetalhesDialogComponent {
       const existing = map.get(key);
       const lineItem: ReturnLineItem = {
         saleItemId: item.id,
+        produtoId: item.produtoId,
         quantity: item.quantity,
         returnedQuantity: item.returnedQuantity ?? 0,
       };
       if (!existing) {
         map.set(key, {
           key,
+          produtoId: item.produtoId,
           nome: item.nome,
           unitPrice: item.unitPrice,
           quantity: item.quantity,
@@ -971,6 +1218,97 @@ export class VendaDetalhesDialogComponent {
     return this.returnLines.reduce((sum, l) => sum + (l.returnQty * l.unitPrice), 0);
   }
 
+  get exchangeTotal(): number {
+    return this.exchangeItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  }
+
+  get exchangeDelta(): number {
+    return this.exchangeTotal - this.returnTotal;
+  }
+
+  get exchangeDeltaAbs(): number {
+    return Math.abs(this.exchangeDelta);
+  }
+
+  trackExchange(_: number, item: ExchangeItem): number {
+    return item.produtoId;
+  }
+
+  onReturnOperationChange(): void {
+    if (this.returnOperation !== 'Troca') {
+      this.exchangeSearch = '';
+      this.exchangeResults = [];
+      this.exchangeItems = [];
+    }
+  }
+
+  onExchangeSearchChange(): void {
+    if (this.exchangeTimer) clearTimeout(this.exchangeTimer);
+    const termo = (this.exchangeSearch || '').trim();
+    if (!termo || termo.length < 2) {
+      this.exchangeResults = [];
+      return;
+    }
+    this.exchangeTimer = setTimeout(() => {
+      const lojaId = this.details?.lojaId ?? 0;
+      if (!lojaId) return;
+      this.produtoService.listarPorLoja(lojaId, termo).subscribe({
+        next: (items) => (this.exchangeResults = items ?? []),
+        error: () => (this.exchangeResults = []),
+      });
+    }, 300);
+  }
+
+  addExchangeItem(produto: Produto): void {
+    const existing = this.exchangeItems.find(i => i.produtoId === produto.id);
+    if (existing) {
+      existing.quantity += 1;
+      return;
+    }
+    this.exchangeItems.push({
+      produtoId: produto.id ?? 0,
+      nome: produto.nome,
+      unitPrice: Number(produto.precoVenda ?? 0),
+      quantity: 1,
+    });
+  }
+
+  removeExchangeItem(item: ExchangeItem): void {
+    this.exchangeItems = this.exchangeItems.filter(i => i.produtoId !== item.produtoId);
+  }
+
+  clampExchangeQty(item: ExchangeItem): void {
+    const next = Math.max(0, Math.floor(Number(item.quantity ?? 0)));
+    item.quantity = next;
+  }
+
+  clampExchangePrice(item: ExchangeItem): void {
+    const next = Math.max(0, Number(item.unitPrice ?? 0));
+    item.unitPrice = Number.isFinite(next) ? next : 0;
+  }
+
+  lineTags(line: ReturnLine): string[] {
+    const tags: string[] = [];
+    const hasReturn = line.returnedQuantity > 0;
+    const hasDefect = this.details?.returns?.some(ret =>
+      Number(ret.returnType) === 2 &&
+      ret.items.some(i => line.items.some(li => li.saleItemId === i.saleItemId))
+    );
+    if (hasDefect) {
+      tags.push('Defeito');
+    } else if (hasReturn) {
+      tags.push('Devolvido');
+    }
+    return tags;
+  }
+
+  tagClass(tag: string): string {
+    if (tag === 'Defeito') return 'tag-defect';
+    if (tag === 'Devolvido') return 'tag-return';
+    if (tag === 'Troca') return 'tag-exchange';
+    return '';
+  }
+
   confirmReturn(): void {
     if (!this.details || !this.canReturn()) return;
     const items: Array<{ saleItemId: number; quantity: number }> = [];
@@ -990,20 +1328,43 @@ export class VendaDetalhesDialogComponent {
     }
 
     this.saving = true;
-    const reason = [this.returnType, this.returnReason?.trim()].filter(Boolean).join(': ');
+      const exchangeInfo = this.returnOperation === 'Troca' && this.exchangeItems.length
+        ? `Itens troca: ${this.exchangeItems.map(i => `${i.nome} x${i.quantity} (R$ ${i.unitPrice.toFixed(2)})`).join(', ')}`
+        : '';
+      const reason = [this.returnOperation, this.returnDefect ? 'Defeito' : null, this.returnReason?.trim(), exchangeInfo]
+        .filter(Boolean)
+        .join(': ');
+    const operation = this.returnOperation === 'Troca' ? 2 : 1;
+    const returnType = this.returnDefect ? 2 : 1;
     this.pdv.returnSale(this.details.id, {
       saleId: this.details.id,
       reason: reason || undefined,
+      operation,
+      returnType,
       items,
+      exchangeItems: this.returnOperation === 'Troca'
+        ? this.exchangeItems.filter(i => i.quantity > 0).map(i => ({
+            produtoId: i.produtoId,
+            tipo: 'PRODUTO',
+            nome: i.nome,
+            codigoBarra: null,
+            unitPrice: i.unitPrice,
+            quantity: i.quantity,
+          }))
+        : [],
     })
     .subscribe({
       next: (updated) => {
-        this.details = updated;
-        this.returnLines = this.groupLines(updated.items ?? []);
-        this.returnReason = '';
-        this.returnType = 'Devolução';
-        this.saving = false;
-        this.ref.close(updated);
+        const finish = () => {
+          this.details = updated;
+          this.returnLines = this.groupLines(updated.items ?? []);
+          this.returnReason = '';
+          this.returnDefect = false;
+          this.saving = false;
+          this.ref.close(updated);
+        };
+
+        finish();
       },
       error: (err) => {
         console.error('[VendaDetalhes] erro ao salvar devolução', err);
@@ -1029,6 +1390,201 @@ export class VendaDetalhesDialogComponent {
     this.ref.close();
   }
 
+  previewReceipt(): void {
+    if (!this.details) return;
+    const html = this.buildReceiptHtml(this.details);
+    const win = window.open('', '_blank', 'width=420,height=720');
+    if (!win) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+  }
+
+  private buildReceiptHtml(details: SaleDetailsDto): string {
+    const total = Number(details.total ?? 0);
+    const subtotal = Number(details.subtotal ?? total);
+    const desconto = details.discountPercent >= 0 ? Number(details.discountValue ?? 0) : 0;
+    const acrescimo = details.discountPercent < 0 ? Math.abs(Number(details.discountValue ?? 0)) : 0;
+    const header = this.lojaName ? `${this.lojaName}` : 'Comprovante de venda';
+    const itens = (details.items ?? [])
+      .map(i => {
+        const qtd = Number(i.quantity ?? 0);
+        const unit = Number(i.unitPrice ?? 0);
+        const totalItem = qtd * unit;
+        return `
+          <tr>
+            <td>${i.nome ?? '-'}</td>
+            <td class="num">${qtd.toLocaleString('pt-BR')}</td>
+            <td class="num">${unit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            <td class="num">${totalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+          </tr>`;
+      })
+      .join('');
+    const payments = (details.payments ?? [])
+      .map(p => {
+        const method = this.paymentMethodLabel(p.method);
+        const amount = Number(p.amount ?? 0);
+        return `
+          <tr>
+            <td>${method}</td>
+            <td class="num">${amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+          </tr>`;
+      })
+      .join('');
+    const paymentsBlock = payments
+      ? `
+    <div class="section-title">Pagamentos</div>
+    <table class="payments">
+      <thead>
+        <tr>
+          <th>Forma</th>
+          <th class="num">Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${payments}
+      </tbody>
+    </table>`
+      : '';
+
+    return `
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Comprovante</title>
+  <style>
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; padding:18px;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color:#0f172a;
+      background:#f8fafc;
+    }
+    .receipt{
+      max-width:380px;
+      margin:0 auto;
+      background:#fff;
+      border:1px solid #e2e8f0;
+      border-radius:12px;
+      padding:16px;
+      box-shadow:0 8px 20px rgba(15,23,42,.08);
+    }
+    .title{
+      text-align:center;
+      font-weight:700;
+      margin-bottom:6px;
+    }
+    .meta{
+      text-align:center;
+      color:#64748b;
+      font-size:12px;
+      margin-bottom:12px;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:12px;
+    }
+    th, td{
+      padding:6px 4px;
+      border-bottom:1px dashed #e2e8f0;
+      vertical-align:top;
+    }
+    th{
+      text-align:left;
+      color:#475569;
+      font-weight:600;
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+    td.num, th.num{ text-align:right; }
+    .section-title{
+      margin-top:10px;
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      color:#475569;
+      font-weight:700;
+    }
+    .payments{
+      margin-top:6px;
+    }
+    .totals{
+      margin-top:10px;
+      font-size:12px;
+    }
+    .totals .row{
+      display:flex;
+      justify-content:space-between;
+      margin:3px 0;
+    }
+    .totals .row.total{
+      font-weight:700;
+      font-size:13px;
+    }
+    .actions{
+      margin-top:14px;
+      display:flex;
+      justify-content:center;
+      gap:8px;
+    }
+    .btn{
+      border:1px solid #0f172a;
+      background:#0f172a;
+      color:#fff;
+      padding:8px 12px;
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:600;
+    }
+    .btn.secondary{
+      background:#fff;
+      color:#0f172a;
+    }
+    @media print{
+      body{ background:#fff; padding:0; }
+      .receipt{ box-shadow:none; border:none; }
+      .actions{ display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="receipt">
+    <div class="title">${header}</div>
+    <div class="meta">${this.fmtDate(details.createdAt)} · ${this.atendenteLabel(details.operadorId, details.operadorNome)}</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th class="num">Qtd</th>
+          <th class="num">Unit.</th>
+          <th class="num">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itens || '<tr><td colspan="4">Sem itens</td></tr>'}
+      </tbody>
+    </table>
+    <div class="totals">
+      <div class="row"><span>Subtotal</span><span>${subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+      <div class="row"><span>Desconto</span><span>${desconto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+      <div class="row"><span>Acréscimo</span><span>${acrescimo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+      <div class="row total"><span>Total</span><span>${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+    </div>
+    ${paymentsBlock}
+    <div class="actions">
+      <button class="btn secondary" onclick="window.close()">Fechar</button>
+      <button class="btn" onclick="window.print()">Imprimir</button>
+    </div>
+  </div>
+</body>
+</html>`;
+  }
+
   desconto(details: SaleDetailsDto): number {
     return details.discountPercent >= 0 ? details.discountValue : 0;
   }
@@ -1041,6 +1597,23 @@ export class VendaDetalhesDialogComponent {
     if (nome) return nome;
     if (!operadorId) return '-';
     return `Operador #${operadorId}`;
+  }
+
+  paymentMethodLabel(method: number): string {
+    switch (Number(method)) {
+      case 1:
+        return 'Dinheiro';
+      case 2:
+        return 'Pix';
+      case 3:
+        return 'Débito';
+      case 4:
+        return 'Crédito';
+      case 5:
+        return 'Vale';
+      default:
+        return `Método ${method}`;
+    }
   }
 
   statusLabel(status: string | number): string {

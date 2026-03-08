@@ -973,6 +973,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private quantityPending = new Map<string, number | string | null>();
   private stockWarningAt = new Map<string, number>();
   private stockWarningOpen = false;
+  private searchStockAlertOpen = false;
   private stockByProductId = new Map<number, number>();
 
   menuOpen = false;
@@ -1325,7 +1326,12 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
     if (item.tipo === 'PRODUTO' && item.estoque != null) {
       const disponivel = this.getAvailableStock(item.id, item.estoque);
+      if (disponivel <= 0) {
+        this.openSearchStockAlert('zero');
+        return;
+      }
       if (qty > disponivel) {
+        this.openSearchStockAlert('excesso', disponivel, qty);
         return;
       }
     }
@@ -1364,7 +1370,36 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
           alert(err?.error?.message ?? 'Nao foi possivel adicionar o item.');
         }
       });
-    }
+  }
+
+  private openSearchStockAlert(
+    tipo: 'zero' | 'excesso',
+    disponivel?: number,
+    solicitado?: number
+  ): void {
+    if (this.searchStockAlertOpen) return;
+    this.searchStockAlertOpen = true;
+    const message =
+      tipo === 'zero'
+        ? 'Estoque insuficiente.'
+        : `Quantidade maior que o estoque. Disponivel: ${disponivel ?? 0}.`;
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Alerta de estoque',
+          message,
+          confirmText: 'Ok',
+          cancelText: 'Fechar',
+          icon: 'warning',
+        },
+        autoFocus: false,
+        panelClass: ['ml-dialog', 'ml-dialog-alert'],
+      })
+      .afterClosed()
+      .subscribe(() => {
+        this.searchStockAlertOpen = false;
+      });
+  }
 
   private mergeItem(item: ItemVendavelDto, qty: number): void {
     if (!this.currentSale) return;
@@ -1499,6 +1534,8 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
         this.markSaleClosed(sale.id);
         this.releaseCheckoutLock(sale.id);
         this.ensureSaleOpen();
+        this.resetSearch();
+        this.focusSearch();
         this.notifySalesChanged();
       },
       error: err => {

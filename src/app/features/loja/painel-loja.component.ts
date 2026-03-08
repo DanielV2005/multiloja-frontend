@@ -1171,7 +1171,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     const dataInicio = this.formatIsoDate(start);
     const dataFim = this.formatIsoDate(today);
 
-    this.pdv.list(dataInicio, dataFim, [2], 0, 2000)
+    this.pdv.list(dataInicio, dataFim, [2, 4], 0, 2000)
       .pipe(timeout(8000), takeUntil(this.salesCancel$), takeUntil(this.destroy$))
       .subscribe({
       next: (items) => this.loadSaleProfitsAndBuild(items, start, this.maxRangeDays),
@@ -1286,8 +1286,9 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
         const productRevenue = productById.get(s.id) ?? fallbackRevenue;
         const serviceRevenue = serviceById.get(s.id) ?? 0;
         const totalRevenue = productRevenue + serviceRevenue;
-        const saleSubtotal = Number(s.subtotal ?? totalRevenue);
-        const saleTotal = Number(s.total ?? totalRevenue);
+        const detail = this.salesDetailsCache.get(s.id);
+        const saleSubtotal = Number(detail?.subtotal ?? s.subtotal ?? totalRevenue);
+        const saleTotal = Number(detail?.total ?? s.total ?? totalRevenue);
         const factor = saleSubtotal > 0 ? saleTotal / saleSubtotal : 1;
         const productNet = productRevenue * factor;
         const serviceNet = serviceRevenue * factor;
@@ -1732,11 +1733,13 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       this.visibleInventoryCostLabel = this.formatMoney(totalCost);
       this.visibleInventorySaleLabel = this.formatMoney(totalSale);
       this.inventoryProfitLabel = this.formatMoney(totalSale - totalCost);
+      this.persistPatrimonioVenda(totalSale);
       this.scheduleTopSetoresUpdate();
     } catch {
       this.visibleInventoryCostLabel = this.formatMoney(0);
       this.visibleInventorySaleLabel = this.formatMoney(0);
       this.inventoryProfitLabel = this.formatMoney(0);
+      this.persistPatrimonioVenda(0);
       this.topSetores = [];
     } finally {
       this.inventoryLoaded = true;
@@ -2058,6 +2061,13 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     return new Date(start.getFullYear(), 11, 31);
   }
 
+  private persistPatrimonioVenda(totalSale: number): void {
+    const lojaId = this.loja?.id ?? this.lojaId ?? 0;
+    if (!lojaId) return;
+    const value = Number.isFinite(totalSale) ? Math.max(0, Math.round(totalSale)) : 0;
+    localStorage.setItem(`patrimonio_venda_loja_${lojaId}`, String(value));
+  }
+
   private getVisibleRangeDates(): { start: Date; end: Date } | null {
     if (!this.salesBucketStarts.length) return null;
     const range = this.zoomRange ?? { startIndex: 0, endIndex: this.salesBucketStarts.length - 1 };
@@ -2286,7 +2296,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       let costTotal = 0;
       let productTotal = 0;
       for (const item of detail.items) {
-        const qtd = Number(item?.quantity ?? 0);
+        const qtd = Math.max(0, Number(item?.quantity ?? 0) - Number(item?.returnedQuantity ?? 0));
         if (qtd <= 0) continue;
         const tipo = String(item?.tipo ?? '').trim().toLowerCase();
         const isProduct = tipo === 'produto' || tipo === 'product';
@@ -2297,6 +2307,21 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
         const unit = Number(item?.unitPrice ?? 0);
         productTotal += unit * qtd;
       }
+
+      const exchangeItems = detail.returns?.flatMap(r => r.exchangeItems ?? []) ?? [];
+      for (const ex of exchangeItems) {
+        const tipo = String(ex?.tipo ?? '').trim().toLowerCase();
+        const isProduct = tipo === 'produto' || tipo === 'product';
+        if (!isProduct) continue;
+        const qtd = Number(ex?.quantity ?? 0);
+        if (qtd <= 0) continue;
+        const produto = this.produtosMap.get(Number(ex?.produtoId));
+        const cost = produto ? Number(produto.precoCusto ?? 0) : 0;
+        costTotal += cost * qtd;
+        const unit = Number(ex?.unitPrice ?? 0);
+        productTotal += unit * qtd;
+      }
+
       const subtotal = Number(detail.subtotal ?? 0);
       const total = Number(detail.total ?? subtotal);
       const factor = subtotal > 0 ? total / subtotal : 1;
@@ -2311,11 +2336,23 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       const tipo = String(item?.tipo ?? '').trim().toLowerCase();
       const isProduct = tipo === 'produto' || tipo === 'product';
       if (!isProduct) continue;
-      const qtd = Number(item?.quantity ?? 0);
+      const qtd = Math.max(0, Number(item?.quantity ?? 0) - Number(item?.returnedQuantity ?? 0));
       if (qtd <= 0) continue;
       const unit = Number(item?.unitPrice ?? 0);
       total += unit * qtd;
     }
+
+    const exchangeItems = detail.returns?.flatMap(r => r.exchangeItems ?? []) ?? [];
+    for (const ex of exchangeItems) {
+      const tipo = String(ex?.tipo ?? '').trim().toLowerCase();
+      const isProduct = tipo === 'produto' || tipo === 'product';
+      if (!isProduct) continue;
+      const qtd = Number(ex?.quantity ?? 0);
+      if (qtd <= 0) continue;
+      const unit = Number(ex?.unitPrice ?? 0);
+      total += unit * qtd;
+    }
+
     return total;
   }
 
@@ -2326,9 +2363,19 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       const tipo = String(item?.tipo ?? '').trim().toLowerCase();
       const isService = tipo === 'servico' || tipo === 'serviço' || tipo === 'service';
       if (!isService) continue;
-      const qtd = Number(item?.quantity ?? 0);
+      const qtd = Math.max(0, Number(item?.quantity ?? 0) - Number(item?.returnedQuantity ?? 0));
       if (qtd <= 0) continue;
       const unit = Number(item?.unitPrice ?? 0);
+      total += unit * qtd;
+    }
+    const exchangeItems = detail.returns?.flatMap(r => r.exchangeItems ?? []) ?? [];
+    for (const ex of exchangeItems) {
+      const tipo = String(ex?.tipo ?? '').trim().toLowerCase();
+      const isService = tipo === 'servico' || tipo === 'serviço' || tipo === 'service';
+      if (!isService) continue;
+      const qtd = Number(ex?.quantity ?? 0);
+      if (qtd <= 0) continue;
+      const unit = Number(ex?.unitPrice ?? 0);
       total += unit * qtd;
     }
     return total;
@@ -2343,11 +2390,16 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
         const saleIds = ordered.map(v => v.id);
-        this.dialog.open(VendaDetalhesDialogComponent, {
+        const ref = this.dialog.open(VendaDetalhesDialogComponent, {
           autoFocus: false,
           maxWidth: '95vw',
           panelClass: 'ml-dialog',
           data: { saleId: saleIds[0], saleIds, index: 0 },
+        });
+        ref.afterClosed().subscribe((updated) => {
+          if (!updated) return;
+          this.salesDetailsCache.set(updated.id, updated);
+          this.loadSalesChart();
         });
       },
     });

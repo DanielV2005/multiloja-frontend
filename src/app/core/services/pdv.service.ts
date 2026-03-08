@@ -50,12 +50,33 @@ export interface SaleReturnItemDto {
   unitPrice: number;
 }
 
+export interface SaleReturnExchangeItemDto {
+  id: number;
+  produtoId: number;
+  tipo: string;
+  nome: string;
+  codigoBarra?: string | null;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface PaymentDto {
+  id: number;
+  method: number;
+  amount: number;
+  paidAt: string;
+  refCode?: string | null;
+}
+
 export interface SaleReturnDto {
   id: number;
   operadorId?: number | null;
   reason?: string | null;
+  operation: number;
+  returnType: number;
   createdAt: string;
   items: SaleReturnItemDto[];
+  exchangeItems: SaleReturnExchangeItemDto[];
 }
 
 export interface SaleDetailsDto {
@@ -71,6 +92,7 @@ export interface SaleDetailsDto {
   createdAt: string;
   items: SaleItemDto[];
   returns: SaleReturnDto[];
+  payments: PaymentDto[];
 }
 
 export interface SaleItemSummaryDto {
@@ -112,10 +134,22 @@ export interface ReturnSaleItemRequest {
   quantity: number;
 }
 
+export interface ExchangeSaleItemRequest {
+  produtoId: number;
+  tipo: string;
+  nome: string;
+  codigoBarra?: string | null;
+  unitPrice: number;
+  quantity: number;
+}
+
 export interface ReturnSaleRequest {
   saleId: number;
   reason?: string | null;
+  operation: number;
+  returnType: number;
   items: ReturnSaleItemRequest[];
+  exchangeItems?: ExchangeSaleItemRequest[] | null;
 }
 
 @Injectable({ providedIn: 'root' })

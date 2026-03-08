@@ -105,6 +105,14 @@ body.theme-light{
   overflow-x: hidden !important;
 }
 
+/* Dialog da meta (permitir conteudo responsivo sem cortar botoes) */
+.ml-dialog-meta .mat-mdc-dialog-surface{
+  overflow: visible !important;
+}
+.ml-dialog-meta .mat-mdc-dialog-container{
+  overflow: visible !important;
+}
+
 /* Painel de transferencia: remove a "segunda moldura" do container do Material */
 .transfer-dialog-panel .mdc-dialog__surface{
   background: transparent !important;

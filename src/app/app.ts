@@ -1,20 +1,23 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NavigationEnd, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { AuthStorageService } from './core/services/auth-storage.service';
+import { MetaVendaDialogComponent } from './shared/meta-venda-dialog.component';
 
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet],
+  imports: [CommonModule, RouterOutlet, MatDialogModule],
   templateUrl: './app.html',
   styleUrl: './app.scss'
 })
 export class AppComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private auth = inject(AuthStorageService);
+  private dialog = inject(MatDialog);
   private storageListener?: (event: StorageEvent) => void;
   currentTheme: 'dark' | 'light' = 'dark';
   get showHeader() { return this.router.url !== '/login' && !!this.auth.token; }
@@ -63,6 +66,24 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  @HostListener('document:keydown', ['$event'])
+  onGlobalShortcut(event: KeyboardEvent): void {
+    if (event.defaultPrevented) return;
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const key = event.key.toLowerCase();
+    if (key !== 'q') return;
+    if (this.isTextInput(event.target)) return;
+    if (!this.isAdmin()) return;
+    if (this.isAtalhoBlockedRoute()) return;
+
+    event.preventDefault();
+    this.dialog.open(MetaVendaDialogComponent, {
+      panelClass: ['ml-dialog', 'ml-dialog-meta'],
+      autoFocus: false,
+      data: { lojaId: this.auth.lojaId },
+    });
+  }
+
   private applyTheme(): void {
     const body = document.body;
     body.classList.remove('theme-dark', 'theme-light');
@@ -98,5 +119,25 @@ export class AppComponent implements OnInit, OnDestroy {
     const next = this.currentTheme === 'dark' ? 'light' : 'dark';
     localStorage.setItem('theme', next);
     this.applyTheme();
+  }
+
+  private isAdmin(): boolean {
+    return this.auth.nivelAcesso === 1;
+  }
+
+  private isAtalhoBlockedRoute(): boolean {
+    const url = this.router.url || '';
+    if (url === '/login' || url.startsWith('/login?')) return true;
+    if (url === '/minhas-lojas' || url.startsWith('/minhas-lojas?')) return true;
+    return false;
+  }
+
+  private isTextInput(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    if (el.closest('[contenteditable=\"true\"]')) return true;
+    const tag = el.tagName?.toLowerCase();
+    if (!tag) return false;
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
   }
 }

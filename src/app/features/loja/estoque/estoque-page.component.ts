@@ -41,6 +41,7 @@ import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.componen
     </header>
 
     <main class="content">
+      <div class="stock-layout" [class.no-rank]="!showRank">
       <div class="card">
         <header class="card__header">
           <div>
@@ -51,6 +52,15 @@ import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.componen
           </div>
 
           <div class="header-actions">
+            <button
+              class="icon-btn"
+              type="button"
+              title="Alternar ranking"
+              (click)="toggleRank()"
+            >
+              <span class="material-symbols-outlined">{{ showRank ? 'visibility' : 'visibility_off' }}</span>
+            </button>
+
             <button
               class="btn-secondary"
               type="button"
@@ -187,6 +197,51 @@ import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.componen
           </div>
         </div>
       </div>
+
+      <div class="card rank-card" *ngIf="showRank">
+        <header class="card__header">
+          <div>
+            <h3>Ranking por setor</h3>
+            <small class="muted">
+              {{ loading ? 'Carregando...' : 'Setores: ' + setoresRank.length }}
+            </small>
+          </div>
+        </header>
+
+        <div *ngIf="loading" class="loading">
+          <div class="spinner"></div>
+          <span>Carregando setores...</span>
+        </div>
+
+        <p *ngIf="!loading && setoresRank.length === 0" class="empty">
+          Nenhum setor com produtos.
+        </p>
+
+        <div *ngIf="!loading && setoresRank.length > 0" class="rank-table">
+          <div class="rank-header">
+            <span class="rank-col-setor">Setor</span>
+            <span class="num rank-col-money">Custo total</span>
+            <span class="num rank-col-money">Venda total</span>
+            <span class="num rank-col-qty">Qtd. produtos</span>
+            <span class="num rank-col-money">Lucro</span>
+            <span class="num rank-col-pct">% do total</span>
+          </div>
+          <div class="rank-row" *ngFor="let s of setoresRank">
+            <span class="rank-name rank-col-setor rank-scroll"
+                  #pillEl
+                  (mouseenter)="setScrollable(pillEl, nameEl)"
+                  (mouseleave)="clearScrollable(pillEl)">
+              <span class="name-text" #nameEl>{{ s.nome }}</span>
+            </span>
+            <span class="num rank-col-money rank-num" [attr.title]="fmtMoney(s.custoTotal)">{{ fmtMoneyResumo(s.custoTotal) }}</span>
+            <span class="num rank-col-money rank-num" [attr.title]="fmtMoney(s.vendaTotal)">{{ fmtMoneyResumo(s.vendaTotal) }}</span>
+            <span class="num rank-col-qty rank-num" [attr.title]="s.quantidade">{{ s.quantidade }}</span>
+            <span class="num rank-col-money rank-num" [attr.title]="fmtMoney(s.lucroTotal)">{{ fmtMoneyResumo(s.lucroTotal) }}</span>
+            <span class="num rank-col-pct rank-num" [attr.title]="fmtNumber(s.percentual) + '%'">{{ fmtPercentResumo(s.percentual) }}</span>
+          </div>
+        </div>
+      </div>
+      </div>
     </main>
   </section>
   `,
@@ -235,6 +290,15 @@ import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.componen
   .spacer{ flex:1; }
 
   .content{ display:block; }
+  .stock-layout{
+    display:grid;
+    grid-template-columns: minmax(0, 1fr) 680px;
+    gap:8px;
+    align-items:start;
+  }
+  .stock-layout.no-rank{
+    grid-template-columns: 1fr;
+  }
 
   .card{
     background:var(--surface);
@@ -244,6 +308,10 @@ import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.componen
     padding:16px 16px 18px;
     max-width:1120px;
     margin:0 auto;
+  }
+  .rank-card{
+    max-width:680px;
+    margin:0;
   }
   .card__header{
     display:flex;
@@ -277,6 +345,81 @@ import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.componen
     color:var(--text);
     outline:none;
     font-size:.95rem;
+  }
+  .rank-table{
+    border:1px solid var(--border);
+    border-radius:12px;
+    overflow:hidden;
+    background:#050814;
+    display:table;
+    max-height:460px;
+    overflow-y:auto;
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+  }
+  .rank-header, .rank-row{
+    display:table-row;
+    align-items:center;
+  }
+  .rank-header{
+    background:rgba(15,21,40,.96);
+    font-size:.76rem;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:var(--muted);
+  }
+  .rank-row{
+    font-size:.92rem;
+  }
+  .rank-header span,
+  .rank-row span{
+    display:table-cell;
+    padding:10px 12px;
+    border-bottom:1px solid rgba(148,163,184,.25);
+    border-right:1px solid rgba(148,163,184,.25);
+    vertical-align:middle;
+  }
+  .rank-header span:last-child,
+  .rank-row span:last-child{
+    border-right:none;
+  }
+  .rank-col-setor{ width:25%; }
+  .rank-col-money{ width:17%; }
+  .rank-col-qty{ width:12%; }
+  .rank-col-pct{ width:12%; }
+  .rank-name{
+    font-weight:600;
+  }
+  .rank-row .num, .rank-header .num{
+    text-align:right;
+  }
+  .rank-num{
+    font-variant-numeric: tabular-nums;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    font-size:clamp(.78rem, 0.9vw, .92rem);
+  }
+  .rank-scroll{
+    display:block;
+    min-width:0;
+    overflow:hidden;
+    position:relative;
+  }
+  .rank-scroll .name-text{
+    display:inline-block;
+    white-space:nowrap;
+    padding-right:16px;
+    transform:translateX(0);
+    max-width:100%;
+  }
+  .rank-scroll.scrollable:hover .name-text{
+    animation: rank-name-scroll 8s linear infinite;
+  }
+  @keyframes rank-name-scroll{
+    0%{ transform: translateX(0); }
+    100%{ transform: translateX(-100%); }
   }
   .search-row .material-symbols-outlined{
     color:var(--muted);
@@ -389,9 +532,9 @@ import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.componen
   }
 
   /* larguras das colunas (todas compartilham) */
-  .table .col-produto{ width:32%; }
+  .table .col-produto{ width:20%; }
   .table .col-numero { width:11%; }
-  .table .col-setor { width:18%; }
+  .table .col-setor { width:13%; }
   .table .col-acoes { width:12%; }
 
   /* alinhamento dos títulos */
@@ -478,6 +621,12 @@ import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.componen
   /* ---------- RESPONSIVO ---------- */
 
   @media (max-width: 900px){
+    .stock-layout{
+      grid-template-columns: 1fr;
+    }
+    .rank-card{
+      max-width:none;
+    }
     .card{ padding:12px; }
     .card__header h3{ font-size:1rem; }
     .table-row .cell{ font-size:.85rem; }
@@ -506,12 +655,38 @@ export class EstoquePageComponent implements OnInit {
   filtro = '';
   filtroAplicado = '';
   loading = false;
+  showRank = false;
   private filtroTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ✅ loading por linha (para desativar sem derrubar a tela toda)
   desativandoId: number | null = null;
 
   private setoresPorId = new Map<number, string>();
+
+  get setoresRank(): Array<{ setorId: number; nome: string; custoTotal: number; vendaTotal: number; quantidade: number; lucroTotal: number; percentual: number }> {
+    const map = new Map<number, { setorId: number; nome: string; custoTotal: number; vendaTotal: number; quantidade: number; lucroTotal: number }>();
+    for (const p of this.produtos) {
+      const setorId = p.setorFilhoId ?? 0;
+      const nome = setorId ? (this.setoresPorId.get(setorId) ?? `#${setorId}`) : 'Sem setor';
+      const qtd = Number(p.quantidade ?? 0);
+      const custo = Number(p.precoCusto ?? 0) * qtd;
+      const venda = Number(p.precoVenda ?? 0) * qtd;
+      const lucro = venda - custo;
+      const current = map.get(setorId) ?? { setorId, nome, custoTotal: 0, vendaTotal: 0, quantidade: 0, lucroTotal: 0 };
+      current.custoTotal += custo;
+      current.vendaTotal += venda;
+      current.quantidade += qtd;
+      current.lucroTotal += lucro;
+      map.set(setorId, current);
+    }
+    const totalQtd = Array.from(map.values()).reduce((sum, item) => sum + item.quantidade, 0);
+    return Array.from(map.values())
+      .map(item => ({
+        ...item,
+        percentual: totalQtd > 0 ? (item.quantidade / totalQtd) * 100 : 0,
+      }))
+      .sort((a, b) => b.vendaTotal - a.vendaTotal);
+  }
 
   ngOnInit(): void {
     this.lojaId = Number(this.route.snapshot.paramMap.get('id')) || 0;
@@ -528,6 +703,23 @@ export class EstoquePageComponent implements OnInit {
     return Number.isFinite(n) ? n : 0;
   }
 
+  toggleRank(): void {
+    this.showRank = !this.showRank;
+  }
+
+  setScrollable(pill: HTMLElement, name: HTMLElement){
+    if (!pill || !name) return;
+    if (name.scrollWidth > name.clientWidth) {
+      pill.classList.add('scrollable');
+    } else {
+      pill.classList.remove('scrollable');
+    }
+  }
+
+  clearScrollable(pill: HTMLElement){
+    pill?.classList.remove('scrollable');
+  }
+
   fmtMoney(value: number | string | null | undefined): string {
     const n = this.toNumber(value);
     return n.toLocaleString('pt-BR', {
@@ -536,6 +728,51 @@ export class EstoquePageComponent implements OnInit {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+  }
+
+  private truncateTo(value: number, decimals: number): number {
+    const factor = Math.pow(10, decimals);
+    return Math.trunc(value * factor) / factor;
+  }
+
+  private trimTrailingZeros(value: string): string {
+    return value.replace(/,?0+$/g, '').replace(/,\s*$/g, '');
+  }
+
+  fmtMoneyResumo(value: number | string | null | undefined): string {
+    const n = this.toNumber(value);
+    const abs = Math.abs(n);
+    if (abs < 1000) return this.fmtMoney(n);
+
+    let scaled = n;
+    let suffix = '';
+    if (abs >= 1_000_000_000) {
+      scaled = n / 1_000_000_000;
+      suffix = 'bi';
+    } else if (abs >= 1_000_000) {
+      scaled = n / 1_000_000;
+      suffix = 'mi';
+    } else {
+      scaled = n / 1_000;
+      suffix = 'mil';
+    }
+
+    const truncated = this.truncateTo(scaled, 2);
+    const formatted = truncated.toLocaleString('pt-BR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+    return `R$ ${this.trimTrailingZeros(formatted)}${suffix}`;
+  }
+
+  fmtPercentResumo(value: number | string | null | undefined): string {
+    const n = this.toNumber(value);
+    const truncated = this.truncateTo(n, 2);
+    const formatted = truncated.toLocaleString('pt-BR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+    return `${this.trimTrailingZeros(formatted)}%`;
   }
 
   fmtNumber(value: number | string | null | undefined): string {
