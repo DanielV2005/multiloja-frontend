@@ -1407,6 +1407,7 @@ export class VendaDetalhesDialogComponent {
     const desconto = details.discountPercent >= 0 ? Number(details.discountValue ?? 0) : 0;
     const acrescimo = details.discountPercent < 0 ? Math.abs(Number(details.discountValue ?? 0)) : 0;
     const header = this.lojaName ? `${this.lojaName}` : 'Comprovante de venda';
+    const logoUrl = `${window.location.origin}/paracomprovante.jpeg`;
     const itens = (details.items ?? [])
       .map(i => {
         const qtd = Number(i.quantity ?? 0);
@@ -1472,10 +1473,35 @@ export class VendaDetalhesDialogComponent {
       padding:16px;
       box-shadow:0 8px 20px rgba(15,23,42,.08);
     }
+    .header{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      margin-bottom:10px;
+    }
+    .logo{
+      width:56px;
+      height:56px;
+      object-fit:contain;
+      border-radius:8px;
+      border:1px solid #e2e8f0;
+      background:#fff;
+      padding:4px;
+    }
+    .company{
+      font-size:11px;
+      line-height:1.35;
+      color:#0f172a;
+    }
+    .company strong{
+      display:block;
+      font-size:12px;
+      letter-spacing:.02em;
+    }
     .title{
       text-align:center;
       font-weight:700;
-      margin-bottom:6px;
+      margin:4px 0 6px;
     }
     .meta{
       text-align:center;
@@ -1490,7 +1516,7 @@ export class VendaDetalhesDialogComponent {
     }
     th, td{
       padding:6px 4px;
-      border-bottom:1px dashed #e2e8f0;
+      border-bottom:1px solid #cbd5e1;
       vertical-align:top;
     }
     th{
@@ -1500,6 +1526,9 @@ export class VendaDetalhesDialogComponent {
       font-size:11px;
       text-transform:uppercase;
       letter-spacing:.04em;
+    }
+    thead th{
+      border-bottom:2px solid #94a3b8;
     }
     td.num, th.num{ text-align:right; }
     .section-title{
@@ -1554,6 +1583,17 @@ export class VendaDetalhesDialogComponent {
 </head>
 <body>
   <div class="receipt">
+    <div class="header">
+      <img class="logo" src="${logoUrl}" alt="Logo" />
+      <div class="company">
+        <strong>BAZAR DO LUIZ</strong>
+        <div>SERVIÇOS DE IMPRESSÃO PAPELARIA E MIUDESAS EM GERAL</div>
+        <div>MODA FEMENINA E MASCULINA</div>
+        <div>AV. RIO NEGRO, Nº58, MAUAZINHO , MANAUS-AM</div>
+        <div>FONE: (92) 981849979</div>
+        <div>CNSPJ: 40.335.310/0001-43</div>
+      </div>
+    </div>
     <div class="title">${header}</div>
     <div class="meta">${this.fmtDate(details.createdAt)} · ${this.atendenteLabel(details.operadorId, details.operadorNome)}</div>
     <table>
