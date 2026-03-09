@@ -1464,6 +1464,9 @@ export class VendaDetalhesDialogComponent {
       color:#0f172a;
       background:#f8fafc;
     }
+    body.mode-a4{
+      background:#eef2f7;
+    }
     .receipt{
       max-width:380px;
       margin:0 auto;
@@ -1473,11 +1476,20 @@ export class VendaDetalhesDialogComponent {
       padding:16px;
       box-shadow:0 8px 20px rgba(15,23,42,.08);
     }
+    body.mode-a4 .receipt{
+      max-width:794px; /* ~A4 width at 96dpi minus margins */
+      padding:28px;
+      border-radius:10px;
+    }
     .header{
       display:flex;
       gap:10px;
       align-items:center;
       margin-bottom:10px;
+    }
+    body.mode-a4 .header{
+      gap:16px;
+      margin-bottom:16px;
     }
     .logo{
       width:56px;
@@ -1488,20 +1500,34 @@ export class VendaDetalhesDialogComponent {
       background:#fff;
       padding:4px;
     }
+    body.mode-a4 .logo{
+      width:72px;
+      height:72px;
+    }
     .company{
       font-size:11px;
       line-height:1.35;
       color:#0f172a;
+    }
+    body.mode-a4 .company{
+      font-size:12px;
     }
     .company strong{
       display:block;
       font-size:12px;
       letter-spacing:.02em;
     }
+    body.mode-a4 .company strong{
+      font-size:14px;
+    }
     .title{
       text-align:center;
       font-weight:700;
       margin:4px 0 6px;
+    }
+    body.mode-a4 .title{
+      font-size:16px;
+      margin:10px 0 8px;
     }
     .meta{
       text-align:center;
@@ -1509,15 +1535,25 @@ export class VendaDetalhesDialogComponent {
       font-size:12px;
       margin-bottom:12px;
     }
+    body.mode-a4 .meta{
+      font-size:13px;
+      margin-bottom:16px;
+    }
     table{
       width:100%;
       border-collapse:collapse;
       font-size:12px;
     }
+    body.mode-a4 table{
+      font-size:13px;
+    }
     th, td{
       padding:6px 4px;
       border-bottom:1px solid #cbd5e1;
       vertical-align:top;
+    }
+    body.mode-a4 th, body.mode-a4 td{
+      padding:8px 6px;
     }
     th{
       text-align:left;
@@ -1526,6 +1562,9 @@ export class VendaDetalhesDialogComponent {
       font-size:11px;
       text-transform:uppercase;
       letter-spacing:.04em;
+    }
+    body.mode-a4 th{
+      font-size:12px;
     }
     thead th{
       border-bottom:2px solid #94a3b8;
@@ -1546,6 +1585,10 @@ export class VendaDetalhesDialogComponent {
       margin-top:10px;
       font-size:12px;
     }
+    body.mode-a4 .totals{
+      font-size:13px;
+      margin-top:16px;
+    }
     .totals .row{
       display:flex;
       justify-content:space-between;
@@ -1560,6 +1603,7 @@ export class VendaDetalhesDialogComponent {
       display:flex;
       justify-content:center;
       gap:8px;
+      flex-wrap:wrap;
     }
     .btn{
       border:1px solid #0f172a;
@@ -1575,13 +1619,28 @@ export class VendaDetalhesDialogComponent {
       color:#0f172a;
     }
     @media print{
+      @page{ size: A4; margin: 12mm; }
       body{ background:#fff; padding:0; }
-      .receipt{ box-shadow:none; border:none; }
+      .receipt{
+        box-shadow:none;
+        border:none;
+        max-width:100%;
+        padding:0;
+      }
       .actions{ display:none; }
     }
   </style>
+  <script>
+    function setMode(mode){
+      document.body.classList.toggle('mode-a4', mode === 'a4');
+      document.body.classList.toggle('mode-cupom', mode === 'cupom');
+    }
+    window.addEventListener('DOMContentLoaded', function(){
+      setMode('cupom');
+    });
+  </script>
 </head>
-<body>
+<body class="mode-cupom">
   <div class="receipt">
     <div class="header">
       <img class="logo" src="${logoUrl}" alt="Logo" />
@@ -1617,6 +1676,8 @@ export class VendaDetalhesDialogComponent {
     </div>
     ${paymentsBlock}
     <div class="actions">
+      <button class="btn secondary" onclick="setMode('cupom')">Cupom</button>
+      <button class="btn secondary" onclick="setMode('a4')">A4</button>
       <button class="btn secondary" onclick="window.close()">Fechar</button>
       <button class="btn" onclick="window.print()">Imprimir</button>
     </div>
