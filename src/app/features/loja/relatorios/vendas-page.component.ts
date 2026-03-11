@@ -2,13 +2,13 @@
 import { Component, Inject, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { FormBuilder, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { AbstractControl, FormBuilder, FormsModule, ReactiveFormsModule, ValidationErrors, ValidatorFn } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 
 import { UsuarioService, Loja } from '../../../core/services/usuario.service';
-import { PdvService, SaleDetailsDto, SaleItemDto, SaleListItemDto, SaleReturnDto } from '../../../core/services/pdv.service';
+import { PdvService, PaymentMethodTotalDto, SaleDetailsDto, SaleItemDto, SaleListItemDto, SaleReturnDto } from '../../../core/services/pdv.service';
 import { Produto, ProdutoService } from '../../../core/services/produto.service';
 
 @Component({
@@ -70,6 +70,7 @@ import { Produto, ProdutoService } from '../../../core/services/produto.service'
                 placeholder="dd/mm/aaaa"
                 inputmode="numeric"
                 autocomplete="off"
+                (input)="onDateInput('dataInicio', $event)"
               />
             </div>
             <span class="range-sep">-</span>
@@ -80,12 +81,43 @@ import { Produto, ProdutoService } from '../../../core/services/produto.service'
                 placeholder="dd/mm/aaaa"
                 inputmode="numeric"
                 autocomplete="off"
+                (input)="onDateInput('dataFim', $event)"
+              />
+            </div>
+
+            <div class="date-error" *ngIf="dateError">
+              {{ dateError }}
+            </div>
+
+            <div class="field name-filter">
+              <input
+                type="text"
+                formControlName="operadorNome"
+                placeholder="Nome do atendente"
+                autocomplete="off"
               />
             </div>
 
             <button class="btn-secondary" type="submit">Atualizar</button>
           </form>
         </header>
+
+        <div class="payment-summary" *ngIf="paymentSummaryVisible">
+          <div class="summary-title">
+            Total por forma de pagamento
+            <span class="muted" *ngIf="paymentSummaryLoading">· Calculando...</span>
+          </div>
+          <div class="summary-grid" *ngIf="!paymentSummaryLoading">
+            <div class="summary-row" *ngFor="let p of paymentSummary">
+              <span>{{ paymentMethodLabel(p.method) }}</span>
+              <strong>R$ {{ p.total | number:'1.2-2' }}</strong>
+            </div>
+            <div class="summary-row total">
+              <span>Total</span>
+              <strong>R$ {{ paymentSummaryTotal | number:'1.2-2' }}</strong>
+            </div>
+          </div>
+        </div>
 
         <div *ngIf="loading" class="loading">
           <div class="spinner"></div>
@@ -217,6 +249,10 @@ import { Produto, ProdutoService } from '../../../core/services/produto.service'
       outline: none;
       min-width: 160px;
     }
+    input[type="text"].ng-invalid.ng-touched{
+      border-color:#f87171;
+      box-shadow:0 0 0 2px rgba(248,113,113,.2);
+    }
     .status-group{
       display:flex;
       align-items:center;
@@ -239,6 +275,12 @@ import { Produto, ProdutoService } from '../../../core/services/produto.service'
       height:14px;
     }
     .range-sep{ color: var(--muted); padding: 0 4px; }
+    .date-error{
+      width:100%;
+      color:#fca5a5;
+      font-size:.78rem;
+      margin-top:4px;
+    }
     select:focus{ border-color: var(--primary); box-shadow: var(--focus); }
     .btn-secondary{
       height:36px;
@@ -353,6 +395,34 @@ import { Produto, ProdutoService } from '../../../core/services/produto.service'
       padding:10px 12px;
       border-top:1px solid rgba(148,163,184,.25);
     }
+    .payment-summary{
+      margin:0 16px 8px;
+      padding:12px;
+      border:1px solid rgba(148,163,184,.25);
+      border-radius:10px;
+      background:rgba(15,23,42,.25);
+    }
+    .summary-title{
+      font-size:.8rem;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      color:var(--muted);
+      margin-bottom:8px;
+    }
+    .summary-grid{
+      display:grid;
+      gap:6px;
+    }
+    .summary-row{
+      display:flex;
+      justify-content:space-between;
+      font-size:.9rem;
+    }
+    .summary-row.total{
+      padding-top:6px;
+      border-top:1px solid rgba(148,163,184,.25);
+      font-weight:700;
+    }
   `],
 })
 export class VendasPageComponent implements OnInit, OnDestroy {
@@ -368,6 +438,9 @@ export class VendasPageComponent implements OnInit, OnDestroy {
   lojaId = 0;
   loja: Loja | null = null;
   vendas: SaleListItemDto[] = [];
+  paymentSummary: PaymentMethodTotalDto[] = [];
+  paymentSummaryTotal = 0;
+  paymentSummaryLoading = false;
   loading = false;
   loadingMore = false;
   hasMore = true;
@@ -379,8 +452,9 @@ export class VendasPageComponent implements OnInit, OnDestroy {
     statusCompleted: [false],
     statusCancelled: [false],
     statusReturned: [false],
-    dataInicio: [''],
-    dataFim: [''],
+    dataInicio: ['', [this.dateValidator()]],
+    dataFim: ['', [this.dateValidator()]],
+    operadorNome: [''],
   });
 
   ngOnInit(): void {
@@ -395,6 +469,17 @@ export class VendasPageComponent implements OnInit, OnDestroy {
       next: loja => (this.loja = loja ?? null),
       error: () => (this.loja = null),
     });
+
+    const nomeParam = (this.route.snapshot.queryParamMap.get('nome') ?? '').trim();
+    const dataInicioParam = (this.route.snapshot.queryParamMap.get('dataInicio') ?? '').trim();
+    const dataFimParam = (this.route.snapshot.queryParamMap.get('dataFim') ?? '').trim();
+    if (nomeParam || dataInicioParam || dataFimParam) {
+      this.form.patchValue({
+        operadorNome: nomeParam,
+        dataInicio: dataInicioParam,
+        dataFim: dataFimParam,
+      }, { emitEvent: false });
+    }
 
     this.buscar(true);
 
@@ -421,15 +506,15 @@ export class VendasPageComponent implements OnInit, OnDestroy {
     }
     if (!this.hasMore || this.loadingMore) return;
 
-    const dataInicio = this.normalizeDate(this.form.value.dataInicio || undefined);
-    const dataFim = this.normalizeDate(this.form.value.dataFim || undefined);
+    const { dataInicio, dataFim } = this.resolveDateRange();
     const statuses = this.selectedStatuses();
+    const operadorNome = this.getOperadorNomeFiltro();
 
     this.loading = this.skip === 0;
     this.loadingMore = this.skip > 0;
 
     this.pdv
-      .list(dataInicio, dataFim, statuses, this.skip, this.pageSize)
+      .list(dataInicio, dataFim, statuses, this.skip, this.pageSize, operadorNome || undefined)
       .subscribe({
         next: itens => {
           const novos = itens ?? [];
@@ -438,6 +523,9 @@ export class VendasPageComponent implements OnInit, OnDestroy {
           this.hasMore = novos.length === this.pageSize;
           this.loading = false;
           this.loadingMore = false;
+          if (this.skip === novos.length) {
+            this.loadPaymentSummaryIfNeeded(dataInicio, dataFim, statuses, operadorNome);
+          }
         },
         error: err => {
           console.error('[Vendas] erro ao carregar', err);
@@ -456,6 +544,27 @@ export class VendasPageComponent implements OnInit, OnDestroy {
 
   trackById(_: number, item: SaleListItemDto): number {
     return item.id;
+  }
+
+  get paymentSummaryVisible(): boolean {
+    return this.shouldLoadPaymentSummary();
+  }
+
+  paymentMethodLabel(method: number): string {
+    switch (Number(method)) {
+      case 1:
+        return 'Dinheiro';
+      case 2:
+        return 'Pix';
+      case 3:
+        return 'Debito';
+      case 4:
+        return 'Credito';
+      case 5:
+        return 'Vale';
+      default:
+        return `Metodo ${method}`;
+    }
   }
 
   desconto(v: SaleListItemDto): number {
@@ -541,6 +650,8 @@ export class VendasPageComponent implements OnInit, OnDestroy {
     const fim = (this.form.value.dataFim ?? '').trim();
     if (inicio && !this.normalizeDate(inicio)) return false;
     if (fim && !this.normalizeDate(fim)) return false;
+    if (this.form.get('dataInicio')?.invalid) return false;
+    if (this.form.get('dataFim')?.invalid) return false;
     return true;
   }
 
@@ -556,6 +667,102 @@ export class VendasPageComponent implements OnInit, OnDestroy {
     if (returned) list.push('Returned');
     if (list.length === 0 || list.length === 4) return undefined;
     return list;
+  }
+
+  private getOperadorNomeFiltro(): string {
+    const nome = (this.form.value.operadorNome ?? '').trim();
+    return nome;
+  }
+
+  private shouldLoadPaymentSummary(): boolean {
+    const nome = this.getOperadorNomeFiltro();
+    const { dataInicio, dataFim } = this.resolveDateRange();
+    return !!nome && !!dataInicio && !!dataFim;
+  }
+
+  private loadPaymentSummaryIfNeeded(
+    dataInicio: string | undefined,
+    dataFim: string | undefined,
+    statuses: string[] | undefined,
+    operadorNome: string
+  ): void {
+    if (!dataInicio || !dataFim || !operadorNome) {
+      this.paymentSummary = [];
+      this.paymentSummaryTotal = 0;
+      this.paymentSummaryLoading = false;
+      return;
+    }
+
+    this.paymentSummaryLoading = true;
+    this.pdv.listPaymentsTotal(dataInicio, dataFim, operadorNome, statuses)
+      .subscribe({
+        next: items => {
+          const list = items ?? [];
+          this.paymentSummary = list;
+          this.paymentSummaryTotal = list.reduce((sum, i) => sum + Number(i.total ?? 0), 0);
+          this.paymentSummaryLoading = false;
+        },
+        error: err => {
+          console.error('[Vendas] erro ao carregar totais de pagamento', err);
+          this.paymentSummary = [];
+          this.paymentSummaryTotal = 0;
+          this.paymentSummaryLoading = false;
+        },
+      });
+  }
+
+  onDateInput(control: 'dataInicio' | 'dataFim', event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const digits = (input.value || '').replace(/\D/g, '').slice(0, 8);
+    let formatted = '';
+    if (digits.length <= 2) {
+      formatted = digits;
+    } else if (digits.length <= 4) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    } else {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    }
+    this.form.patchValue({ [control]: formatted }, { emitEvent: false });
+    this.form.get(control)?.markAsTouched();
+    this.form.get(control)?.updateValueAndValidity({ emitEvent: false });
+  }
+
+  get dateError(): string | null {
+    const inicio = this.form.get('dataInicio');
+    const fim = this.form.get('dataFim');
+    if (inicio?.touched && inicio.invalid) return 'Data inicial inválida.';
+    if (fim?.touched && fim.invalid) return 'Data final inválida.';
+    return null;
+  }
+
+  private resolveDateRange(): { dataInicio?: string; dataFim?: string } {
+    const inicioRaw = (this.form.value.dataInicio ?? '').trim();
+    const fimRaw = (this.form.value.dataFim ?? '').trim();
+    const inicio = this.normalizeDate(inicioRaw || undefined);
+    const fim = this.normalizeDate(fimRaw || undefined);
+    if (inicio && !fim) return { dataInicio: inicio, dataFim: inicio };
+    if (!inicio && fim) return { dataInicio: fim, dataFim: fim };
+    return { dataInicio: inicio, dataFim: fim };
+  }
+
+  private dateValidator(): ValidatorFn {
+    return (control: AbstractControl): ValidationErrors | null => {
+      const raw = (control.value ?? '').toString().trim();
+      if (!raw) return null;
+      const normalized = this.normalizeDate(raw);
+      if (!normalized) return { invalidDate: true };
+      return this.isRealDate(normalized) ? null : { invalidDate: true };
+    };
+  }
+
+  private isRealDate(iso: string): boolean {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!match) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const d = new Date(year, month - 1, day);
+    return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
   }
 }
 

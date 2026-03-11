@@ -8,7 +8,7 @@ import { catchError, mergeMap, takeUntil, toArray, timeout } from 'rxjs/operator
 import * as echarts from 'echarts';
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
-import { PdvService, SaleDetailsDto, SaleItemSummaryDto, SaleListItemDto } from '../../core/services/pdv.service';
+import { PdvService, SaleDetailsDto, SaleItemSummaryDto, SaleListItemDto, SalesSeriesPointDto } from '../../core/services/pdv.service';
 import { Produto, ProdutoService } from '../../core/services/produto.service';
 import { Setor, SetorService } from '../../core/services/setor.service';
 import { FuncionarioFormDialogComponent } from './funcionarios/funcionario-form.dialog';
@@ -1171,21 +1171,87 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     const dataInicio = this.formatIsoDate(start);
     const dataFim = this.formatIsoDate(today);
 
-    this.pdv.list(dataInicio, dataFim, [2, 4], 0, 2000)
-      .pipe(timeout(8000), takeUntil(this.salesCancel$), takeUntil(this.destroy$))
-      .subscribe({
-      next: (items) => this.loadSaleProfitsAndBuild(items, start, this.maxRangeDays),
-      error: () => {
-        this.salesError = 'Falha ao carregar vendas.';
-        this.salesProfitSeries = [];
-        this.salesRevenueSeries = [];
-        this.salesTotalSeries = [];
-        this.salesServiceSeries = [];
-        this.salesCountSeries = [];
-        this.salesLoading = false;
-        this.scheduleRender();
-      },
+    this.loadSalesChartAsync(dataInicio, dataFim, start, token);
+  }
+
+  private async loadSalesChartAsync(
+    dataInicio: string,
+    dataFim: string,
+    start: Date,
+    token: number
+  ): Promise<void> {
+    try {
+      const points = await firstValueFrom(
+        this.pdv.listSalesSeries(dataInicio, dataFim, [2, 4]).pipe(timeout(8000))
+      );
+      if (token !== this.salesLoadToken) return;
+      this.buildSalesSeriesFromPoints(points ?? [], start, this.maxRangeDays);
+    } catch {
+      if (token !== this.salesLoadToken) return;
+      this.salesError = 'Falha ao carregar vendas.';
+      this.salesProfitSeries = [];
+      this.salesRevenueSeries = [];
+      this.salesTotalSeries = [];
+      this.salesServiceSeries = [];
+      this.salesCountSeries = [];
+      this.salesLoading = false;
+      this.scheduleRender();
+    }
+  }
+
+  private buildSalesSeriesFromPoints(
+    points: SalesSeriesPointDto[],
+    start: Date,
+    days: number
+  ): void {
+    const revenueTotals: number[] = Array.from({ length: days }, () => 0);
+    const profitTotals: number[] = Array.from({ length: days }, () => 0);
+    const serviceTotals: number[] = Array.from({ length: days }, () => 0);
+    const totalTotals: number[] = Array.from({ length: days }, () => 0);
+    const counts: number[] = Array.from({ length: days }, () => 0);
+
+    points.forEach((p) => {
+      const d = this.parseDateOnly(p.date);
+      if (Number.isNaN(d.getTime())) return;
+      const idx = Math.floor((this.startOfDay(d).getTime() - this.startOfDay(start).getTime()) / 86400000);
+      if (idx < 0 || idx >= days) return;
+      const product = Number(p.productTotal ?? 0);
+      const service = Number(p.serviceTotal ?? 0);
+      const total = Number(p.total ?? product + service);
+      const profit = Number(p.profitTotal ?? product);
+      revenueTotals[idx] += product;
+      serviceTotals[idx] += service;
+      totalTotals[idx] += total;
+      profitTotals[idx] += profit;
+      counts[idx] += Number(p.count ?? 0);
     });
+
+    this.dailyStart = this.startOfDay(start);
+    this.dailyRevenueTotals = revenueTotals;
+    this.dailyProfitTotals = profitTotals;
+    this.dailyServiceTotals = serviceTotals;
+    this.dailyTotalTotals = totalTotals;
+    this.dailyCounts = counts;
+    this.rebuildViewSeries();
+
+    this.salesLoading = false;
+    this.scheduleRender();
+  }
+
+  private parseDateOnly(value: string): Date {
+    if (!value) return new Date(NaN);
+    const raw = String(value).trim();
+    const datePart = raw.split('T')[0];
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      const year = Number(parts[0]);
+      const month = Number(parts[1]);
+      const day = Number(parts[2]);
+      if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+        return new Date(year, month - 1, day);
+      }
+    }
+    return new Date(raw);
   }
 
   private loadSaleProfitsAndBuild(items: SaleListItemDto[], start: Date, days: number): void {

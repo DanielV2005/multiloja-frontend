@@ -68,6 +68,11 @@ export interface PaymentDto {
   refCode?: string | null;
 }
 
+export interface PaymentMethodTotalDto {
+  method: number;
+  total: number;
+}
+
 export interface SaleReturnDto {
   id: number;
   operadorId?: number | null;
@@ -101,6 +106,15 @@ export interface SaleItemSummaryDto {
   nome: string;
   quantidade: number;
   total: number;
+}
+
+export interface SalesSeriesPointDto {
+  date: string;
+  productTotal: number;
+  serviceTotal: number;
+  profitTotal: number;
+  total: number;
+  count: number;
 }
 
 export interface StartSaleRequest {
@@ -171,13 +185,26 @@ export class PdvService {
     dataFim?: string,
     status?: Array<string | number>,
     skip = 0,
-    take = 100
+    take = 100,
+    operadorNome?: string
   ): Observable<SaleListItemDto[]> {
     const params: any = { skip, take };
     if (dataInicio) params.dataInicio = dataInicio;
     if (dataFim) params.dataFim = dataFim;
     if (status && status.length) params.status = status.join(',');
+    if (operadorNome) params.operadorNome = operadorNome;
     return this.http.get<SaleListItemDto[]>(`${this.api}`, { params });
+  }
+
+  listPaymentsTotal(
+    dataInicio: string,
+    dataFim: string,
+    operadorNome: string,
+    status?: Array<string | number>
+  ): Observable<PaymentMethodTotalDto[]> {
+    const params: any = { dataInicio, dataFim, operadorNome };
+    if (status && status.length) params.status = status.join(',');
+    return this.http.get<PaymentMethodTotalDto[]>(`${this.api}/payments/total`, { params });
   }
 
   listItemSummary(
@@ -190,6 +217,18 @@ export class PdvService {
     if (dataFim) params.dataFim = dataFim;
     if (status && status.length) params.status = status.join(',');
     return this.http.get<SaleItemSummaryDto[]>(`${this.api}/items/summary`, { params });
+  }
+
+  listSalesSeries(
+    dataInicio?: string,
+    dataFim?: string,
+    status?: Array<string | number>
+  ): Observable<SalesSeriesPointDto[]> {
+    const params: any = {};
+    if (dataInicio) params.dataInicio = dataInicio;
+    if (dataFim) params.dataFim = dataFim;
+    if (status && status.length) params.status = status.join(',');
+    return this.http.get<SalesSeriesPointDto[]>(`${this.api}/series`, { params });
   }
 
   get(saleId: number): Observable<SaleSummaryDto> {

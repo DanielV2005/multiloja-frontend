@@ -10,7 +10,6 @@ import { ItensVendaveisService, ItemVendavelDto } from '../../core/services/iten
 import { PdvService, SaleListItemDto, SaleSummaryDto } from '../../core/services/pdv.service';
 import { firstValueFrom, forkJoin } from 'rxjs';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
-import { VendaDetalhesDialogComponent } from '../loja/relatorios/vendas-page.component';
 
 interface CartItem {
   key: string;
@@ -2195,7 +2194,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     if (key === 'v') {
       if (this.isTextInput(event.target)) return;
       event.preventDefault();
-      this.abrirUltimaVenda();
+      this.abrirListaVendas();
     }
     if (key === 'b') {
       event.preventDefault();
@@ -2618,22 +2617,23 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     }
   }
 
-  private abrirUltimaVenda(): void {
-    this.pdvService.list(undefined, undefined, undefined, 0, 200).subscribe({
-      next: (vendas: SaleListItemDto[]) => {
-        if (!vendas?.length) return;
-        const ordered = [...vendas].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        const saleIds = ordered.map(v => v.id);
-        this.dialog.open(VendaDetalhesDialogComponent, {
-          autoFocus: false,
-          maxWidth: '95vw',
-          panelClass: 'ml-dialog',
-          data: { saleId: saleIds[0], saleIds, index: 0 },
-        });
-      },
-    });
+  private abrirListaVendas(): void {
+    if (!this.lojaId) return;
+    const nome = (this.auth.userId ?? this.auth.email ?? '').trim();
+    const hoje = this.formatDatePtBr(new Date());
+    const queryParams: Record<string, string> = {
+      dataInicio: hoje,
+      dataFim: hoje,
+    };
+    if (nome) queryParams['nome'] = nome;
+    this.router.navigate(['/loja', this.lojaId, 'relatorios', 'vendas'], { queryParams });
+  }
+
+  private formatDatePtBr(date: Date): string {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = String(date.getFullYear());
+    return `${d}/${m}/${y}`;
   }
 
   private isTextInput(target: EventTarget | null): boolean {
