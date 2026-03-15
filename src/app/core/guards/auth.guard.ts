@@ -17,7 +17,8 @@ export const authGuard: CanActivateFn = (route, state) => {
 
   if (auth.nivelAcesso === 3) {
     const isPdv = /^\/loja\/\d+\/pdv(\/|$)/.test(state.url);
-    if (!isPdv) {
+    const isVendas = /^\/loja\/\d+\/relatorios\/vendas(\/|$)/.test(state.url);
+    if (!isPdv && !isVendas) {
       if (auth.lojaId) {
         router.navigate(['/loja', auth.lojaId, 'pdv']);
       } else {

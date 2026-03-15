@@ -17,6 +17,7 @@ export class AuthStorageService {
   private _lojaId: number | null = null;
   private _userId: string | null = null;
   private _email: string | null = null;
+  private _name: string | null = null;
 
   constructor() {
     const stored = localStorage.getItem(this.STORAGE_KEY);
@@ -57,6 +58,11 @@ export class AuthStorageService {
     return this._email;
   }
 
+  /** Nome do usuario, quando presente no token */
+  get name(): string | null {
+    return this._name;
+  }
+
   /** Salva (ou limpa) o token em memoria + localStorage */
   setToken(token: string | null): void {
     if (!token) {
@@ -66,6 +72,7 @@ export class AuthStorageService {
       this._lojaId = null;
       this._userId = null;
       this._email = null;
+      this._name = null;
       localStorage.removeItem(this.STORAGE_KEY);
       localStorage.removeItem(this.USER_KEY);
       return;
@@ -95,6 +102,7 @@ export class AuthStorageService {
     this._lojaId = null;
     this._userId = null;
     this._email = null;
+    this._name = null;
 
     try {
       const [, payloadBase64] = token.split('.');
@@ -111,6 +119,9 @@ export class AuthStorageService {
 
       const emailRaw = payload['email'];
       this._email = typeof emailRaw === 'string' ? emailRaw : null;
+
+      const nameRaw = payload['name'];
+      this._name = typeof nameRaw === 'string' ? nameRaw : null;
 
       const nivelRaw = payload['nivelAcesso'];
       const nivel =

@@ -10,6 +10,7 @@ import { ItensVendaveisService, ItemVendavelDto } from '../../core/services/iten
 import { PdvService, SaleListItemDto, SaleSummaryDto } from '../../core/services/pdv.service';
 import { firstValueFrom, forkJoin } from 'rxjs';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
+import { VendaDetalhesDialogComponent } from '../loja/relatorios/vendas-page.component';
 
 interface CartItem {
   key: string;
@@ -934,6 +935,9 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private dialog = inject(MatDialog);
   private auth = inject(AuthStorageService);
   private host = inject(ElementRef<HTMLElement>);
+
+  private lastSaleLoading = false;
+  private lastSaleDialogOpen = false;
 
   @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
 
@@ -2194,7 +2198,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     if (key === 'v') {
       if (this.isTextInput(event.target)) return;
       event.preventDefault();
-      this.abrirListaVendas();
+      this.abrirUltimaVenda();
     }
     if (key === 'b') {
       event.preventDefault();
@@ -2617,16 +2621,82 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     }
   }
 
-  private abrirListaVendas(): void {
+  private abrirUltimaVenda(): void {
     if (!this.lojaId) return;
-    const nome = (this.auth.userId ?? this.auth.email ?? '').trim();
-    const hoje = this.formatDatePtBr(new Date());
-    const queryParams: Record<string, string> = {
-      dataInicio: hoje,
-      dataFim: hoje,
-    };
-    if (nome) queryParams['nome'] = nome;
-    this.router.navigate(['/loja', this.lojaId, 'relatorios', 'vendas'], { queryParams });
+    if (this.lastSaleLoading || this.lastSaleDialogOpen) return;
+    const nome = (this.auth.name ?? this.auth.userId ?? this.auth.email ?? '').trim();
+    const hoje = this.formatDateIso(new Date());
+    if (!nome) {
+      this.dialog.open(ConfirmDialogComponent, {
+        data: {
+          title: 'Aviso',
+          message: 'Nao foi possivel identificar o usuario para filtrar as vendas.',
+          confirmText: 'Ok',
+          cancelText: 'Fechar',
+          icon: 'warning',
+        },
+        autoFocus: false,
+        panelClass: ['ml-dialog', 'ml-dialog-alert'],
+      });
+      return;
+    }
+    this.lastSaleLoading = true;
+    this.pdvService
+      .list(hoje, hoje, [2], 0, 100, nome)
+      .subscribe({
+        next: (items) => {
+          const list = items ?? [];
+          this.lastSaleLoading = false;
+          if (!list.length) {
+            this.dialog.open(ConfirmDialogComponent, {
+              data: {
+                title: 'Aviso',
+                message: 'Nao ha vendas realizadas hoje.',
+                confirmText: 'Ok',
+                cancelText: 'Fechar',
+                icon: 'warning',
+              },
+              autoFocus: false,
+              panelClass: ['ml-dialog', 'ml-dialog-alert'],
+            });
+            return;
+          }
+          const ordered = [...list].sort((a, b) => {
+            const ta = new Date(a.createdAt).getTime() || 0;
+            const tb = new Date(b.createdAt).getTime() || 0;
+            return ta - tb;
+          });
+          const saleIds = ordered.map(v => v.id);
+          const saleId = saleIds[saleIds.length - 1];
+          if (this.lastSaleDialogOpen) return;
+          this.lastSaleDialogOpen = true;
+          this.dialog.open(VendaDetalhesDialogComponent, {
+            autoFocus: false,
+            maxWidth: '95vw',
+            panelClass: 'ml-dialog',
+            data: { saleId, saleIds, index: saleIds.length - 1, lojaId: this.lojaId },
+          })
+          .afterClosed()
+          .subscribe(() => {
+            this.lastSaleDialogOpen = false;
+          });
+        },
+        error: err => {
+          console.error('[PDV] erro ao buscar ultima venda', err);
+          this.lastSaleLoading = false;
+          this.dialog.open(ConfirmDialogComponent, {
+            data: {
+              title: 'Aviso',
+              message: 'Nao foi possivel abrir a ultima venda.',
+              confirmText: 'Ok',
+              cancelText: 'Fechar',
+              icon: 'warning',
+            },
+            autoFocus: false,
+            panelClass: ['ml-dialog', 'ml-dialog-alert'],
+          });
+        },
+      });
   }
 
   private formatDatePtBr(date: Date): string {
@@ -2634,6 +2704,13 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const y = String(date.getFullYear());
     return `${d}/${m}/${y}`;
+  }
+
+  private formatDateIso(date: Date): string {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = String(date.getFullYear());
+    return `${y}-${m}-${d}`;
   }
 
   private isTextInput(target: EventTarget | null): boolean {
