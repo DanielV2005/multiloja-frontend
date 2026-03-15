@@ -199,10 +199,11 @@ export class PdvService {
   listPaymentsTotal(
     dataInicio: string,
     dataFim: string,
-    operadorNome: string,
+    operadorNome?: string,
     status?: Array<string | number>
   ): Observable<PaymentMethodTotalDto[]> {
-    const params: any = { dataInicio, dataFim, operadorNome };
+    const params: any = { dataInicio, dataFim };
+    if (operadorNome) params.operadorNome = operadorNome;
     if (status && status.length) params.status = status.join(',');
     return this.http.get<PaymentMethodTotalDto[]>(`${this.api}/payments/total`, { params });
   }

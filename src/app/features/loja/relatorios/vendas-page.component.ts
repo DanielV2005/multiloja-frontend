@@ -675,9 +675,8 @@ export class VendasPageComponent implements OnInit, OnDestroy {
   }
 
   private shouldLoadPaymentSummary(): boolean {
-    const nome = this.getOperadorNomeFiltro();
     const { dataInicio, dataFim } = this.resolveDateRange();
-    return !!nome && !!dataInicio && !!dataFim;
+    return !!dataInicio && !!dataFim;
   }
 
   private loadPaymentSummaryIfNeeded(
@@ -686,7 +685,7 @@ export class VendasPageComponent implements OnInit, OnDestroy {
     statuses: string[] | undefined,
     operadorNome: string
   ): void {
-    if (!dataInicio || !dataFim || !operadorNome) {
+    if (!dataInicio || !dataFim) {
       this.paymentSummary = [];
       this.paymentSummaryTotal = 0;
       this.paymentSummaryLoading = false;
@@ -694,7 +693,7 @@ export class VendasPageComponent implements OnInit, OnDestroy {
     }
 
     this.paymentSummaryLoading = true;
-    this.pdv.listPaymentsTotal(dataInicio, dataFim, operadorNome, statuses)
+    this.pdv.listPaymentsTotal(dataInicio, dataFim, operadorNome || undefined, statuses)
       .subscribe({
         next: items => {
           const list = items ?? [];
