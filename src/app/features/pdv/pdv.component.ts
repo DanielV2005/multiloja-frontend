@@ -112,7 +112,6 @@ interface DraftPayload {
             placeholder="Digite nome ou c&#243;digo de barras..."
             [(ngModel)]="filtro"
             (ngModelChange)="onBuscarChange()"
-            (keydown.enter)="adicionarPrimeiroResultado()"
           />
           <div class="qty">
             <label for="qty">Qtd</label>
@@ -138,7 +137,7 @@ interface DraftPayload {
             </div>
             <div class="item-actions">
               <div class="price">{{ fmtMoney(item.precoVenda) }}</div>
-              <button class="btn btn-outline" type="button" (click)="adicionarItem(item)">Adicionar</button>
+              <button class="btn btn-outline" type="button" (click)="adicionarItem(item)" [disabled]="addItemBusy">Adicionar</button>
             </div>
           </div>
         </div>
@@ -959,6 +958,10 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   private buscaTimer: any;
   private lastBarcode = '';
+  private buscaRequestSeq = 0;
+  private lastAutoAddAt = 0;
+  private resultadosTermo = '';
+  addItemBusy = false;
   private cartBySale = new Map<number, CartItem[]>();
   private paymentsBySale = new Map<number, PaymentEntry[]>();
   private paymentDrafts = new Map<string, PaymentEntry>();
@@ -1157,32 +1160,59 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     clearTimeout(this.buscaTimer);
     if (!this.filtro?.trim()) {
       this.resultados = [];
+      this.resultadosTermo = '';
+      this.buscando = false;
       return;
     }
 
+    // Evita usar lista antiga enquanto a nova busca ainda nao retornou.
+    this.resultados = [];
+    this.resultadosTermo = '';
     this.buscaTimer = setTimeout(() => this.buscarItens(), 250);
   }
 
   buscarItens(): void {
+    const termo = (this.filtro ?? '').trim();
+    if (!termo) {
+      this.resultados = [];
+      this.resultadosTermo = '';
+      this.buscando = false;
+      return;
+    }
+    const seq = ++this.buscaRequestSeq;
     this.buscando = true;
     const tipo = this.tipoFiltro === 'ALL' ? null : this.tipoFiltro;
 
-    this.itensService.listar(this.filtro, tipo, true, 1, 20).subscribe({
+    this.itensService.listar(termo, tipo, true, 1, 20).subscribe({
       next: res => {
+        // Descarta resposta atrasada (corrida de requests).
+        if (seq !== this.buscaRequestSeq) return;
+        // Descarta resposta se o termo atual ja mudou.
+        if ((this.filtro ?? '').trim() !== termo) return;
         this.resultados = res?.items ?? [];
+        this.resultadosTermo = termo;
         this.cacheStocks(this.resultados);
         this.buscando = false;
         this.tryAutoAddBarcode();
       },
       error: err => {
+        if (seq !== this.buscaRequestSeq) return;
         console.error('[PDV] erro ao buscar itens', err);
         this.resultados = [];
+        this.resultadosTermo = '';
         this.buscando = false;
       }
     });
   }
 
-  adicionarPrimeiroResultado(): void {
+  adicionarPrimeiroResultado(event?: KeyboardEvent): void {
+    if (this.addItemBusy) return;
+    const typedValue = (event?.target as HTMLInputElement | null)?.value?.trim() ?? (this.filtro ?? '').trim();
+    // Scanner costuma enviar Enter; para codigo de barras usamos apenas o fluxo auto-add.
+    if (this.isBarcodeLike(typedValue)) return;
+    if (this.buscando) return;
+    if (Date.now() - this.lastAutoAddAt < 300) return;
+    if (this.resultadosTermo !== typedValue) return;
     if (this.resultados.length === 1) {
       this.adicionarItem(this.resultados[0]);
     }
@@ -1192,7 +1222,12 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     this.startNewDraft();
   }
 
-  private iniciarVenda(startNew: boolean, pendingItem?: ItemVendavelDto, fromBarcode: boolean = false): void {
+  private iniciarVenda(
+    startNew: boolean,
+    pendingItem?: ItemVendavelDto,
+    fromBarcode: boolean = false,
+    keepAddItemLock: boolean = false
+  ): void {
     this.pdvService.start(!!startNew).subscribe({
       next: sale => {
         this.replaceDraftWithSale(sale);
@@ -1200,12 +1235,16 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
         this.upsertOpenSale(sale);
         this.notifySalesChanged();
         if (pendingItem) {
-          this.adicionarItem(pendingItem, fromBarcode);
+          this.adicionarItem(pendingItem, fromBarcode, keepAddItemLock);
           return;
         }
+        this.addItemBusy = false;
         this.focusSearch();
       },
-      error: err => console.error('[PDV] erro ao iniciar venda', err)
+      error: err => {
+        console.error('[PDV] erro ao iniciar venda', err);
+        this.addItemBusy = false;
+      }
     });
   }
 
@@ -1312,28 +1351,38 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     return item.quantity ?? '';
   }
 
-  adicionarItem(item: ItemVendavelDto, fromBarcode: boolean = false): void {
+  adicionarItem(item: ItemVendavelDto, fromBarcode: boolean = false, keepBusyLock: boolean = false): void {
+    if (this.addItemBusy && !keepBusyLock) {
+      return;
+    }
+    if (!keepBusyLock) {
+      this.addItemBusy = true;
+    }
+
     if (!this.currentSale) {
       if (this.isDraftActive()) {
-        this.iniciarVenda(true, item, fromBarcode);
+        this.iniciarVenda(true, item, fromBarcode, true);
         return;
       }
-      this.iniciarVenda(true, item, fromBarcode);
+      this.iniciarVenda(true, item, fromBarcode, true);
       return;
     }
 
     const qty = this.parseDecimal(this.quantidadePadrao || 1);
     if (!Number.isFinite(qty) || qty <= 0) {
+      this.addItemBusy = false;
       return;
     }
 
     if (item.tipo === 'PRODUTO' && item.estoque != null) {
       const disponivel = this.getAvailableStock(item.id, item.estoque);
       if (disponivel <= 0) {
+        this.addItemBusy = false;
         this.openSearchStockAlert('zero');
         return;
       }
       if (qty > disponivel) {
+        this.addItemBusy = false;
         this.openSearchStockAlert('excesso', disponivel, qty);
         return;
       }
@@ -1356,6 +1405,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
         this.mergeItem(item, qty);
         this.applyStockDelta(item.id, qty);
         this.quantidadePadrao = 1;
+        this.addItemBusy = false;
         if (fromBarcode) {
           this.resetSearch();
         }
@@ -1363,6 +1413,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       },
         error: err => {
           console.error('[PDV] erro ao adicionar item', err);
+          this.addItemBusy = false;
           if (fromBarcode) {
             this.lastBarcode = '';
           }
@@ -2282,6 +2333,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private resetSearch(): void {
     this.filtro = '';
     this.resultados = [];
+    this.resultadosTermo = '';
     this.buscando = false;
     this.lastBarcode = '';
   }
@@ -2313,6 +2365,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     if (trimmed === this.lastBarcode) return;
     if (this.resultados.length !== 1) return;
     this.lastBarcode = trimmed;
+    this.lastAutoAddAt = Date.now();
     this.adicionarItem(this.resultados[0], true);
   }
 
