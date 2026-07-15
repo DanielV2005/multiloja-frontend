@@ -1,8 +1,8 @@
 // src/app/features/loja/painel-loja.component.ts
-import { AfterViewInit, Component, ElementRef, HostListener, NgZone, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, HostListener, Inject, NgZone, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { firstValueFrom, forkJoin, from, of, Subject } from 'rxjs';
 import { catchError, mergeMap, takeUntil, toArray, timeout } from 'rxjs/operators';
 import * as echarts from 'echarts';
@@ -214,21 +214,21 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
               <div class="panel">
                 <div class="panel__header">
                   <h4>Alertas</h4>
-                  <span class="muted">Ativos</span>
+                  <span class="muted">{{ activeAlertCount }} ativos</span>
                 </div>
                 <div class="panel__body">
-                  <div class="alert-row">
-                    <span class="dot warn"></span>
+                  <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('lowStock')">
+                    <span class="dot" [class.warn]="lowStockAlerts.length > 0" [class.neutral]="lowStockAlerts.length === 0"></span>
                     <span>Produtos com estoque baixo</span>
-                  </div>
-                  <div class="alert-row">
-                    <span class="dot warn"></span>
+                  </button>
+                  <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('staleProducts')">
+                    <span class="dot" [class.warn]="staleProductAlerts.length > 0" [class.neutral]="staleProductAlerts.length === 0"></span>
                     <span>Produtos parados (30+ dias)</span>
-                  </div>
-                  <div class="alert-row">
-                    <span class="dot neutral"></span>
+                  </button>
+                  <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('lowMargin')">
+                    <span class="dot" [class.warn]="lowMarginAlerts.length > 0" [class.neutral]="lowMarginAlerts.length === 0"></span>
                     <span>Margens abaixo do esperado</span>
-                  </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -726,6 +726,27 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
         font-size: 0.85rem;
       }
 
+      .alert-row--button {
+        width: 100%;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        text-align: left;
+        transition: opacity 0.18s ease;
+      }
+
+      .alert-row--button:hover {
+        opacity: 0.92;
+      }
+
+      .alert-row--button:focus-visible {
+        outline: 1px solid rgba(240, 210, 122, 0.55);
+        outline-offset: 4px;
+        border-radius: 8px;
+      }
+
       .dot {
         width: 8px;
         height: 8px;
@@ -908,6 +929,9 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
   ],
 })
 export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
+  private readonly lowStockThreshold = 5;
+  private readonly lowMarginThreshold = 30;
+  private readonly staleDaysThreshold = 30;
   private route = inject(ActivatedRoute);
   private api = inject(UsuarioService);
   private pdv = inject(PdvService);
@@ -980,10 +1004,17 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private inventoryLoaded = false;
   salesLoading = false;
   salesError = '';
+  lowStockAlerts: AlertDialogItem[] = [];
+  staleProductAlerts: AlertDialogItem[] = [];
+  lowMarginAlerts: AlertDialogItem[] = [];
 
   menuFuncionariosAberto = false;
   menuInventarioAberto = false;
   menuRelatoriosAberto = false;
+
+  get activeAlertCount(): number {
+    return [this.lowStockAlerts, this.staleProductAlerts, this.lowMarginAlerts].filter((list) => list.length > 0).length;
+  }
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get('id'));
@@ -1786,8 +1817,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       let totalSale = 0;
 
       produtos.forEach((p: Produto) => {
-        const qtdRaw = (p as any).quantidade ?? (p as any).estoque ?? 0;
-        const qtd = Number(qtdRaw ?? 0);
+        const qtd = this.getProductQuantity(p);
         if (qtd <= 0) return;
         const custo = Number(p.precoCusto ?? 0);
         const venda = Number(p.precoVenda ?? 0);
@@ -1801,12 +1831,16 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       this.inventoryProfitLabel = this.formatMoney(totalSale - totalCost);
       this.persistPatrimonioVenda(totalSale);
       this.scheduleTopSetoresUpdate();
+      await this.loadAlertData(produtos);
     } catch {
       this.visibleInventoryCostLabel = this.formatMoney(0);
       this.visibleInventorySaleLabel = this.formatMoney(0);
       this.inventoryProfitLabel = this.formatMoney(0);
       this.persistPatrimonioVenda(0);
       this.topSetores = [];
+      this.lowStockAlerts = [];
+      this.staleProductAlerts = [];
+      this.lowMarginAlerts = [];
     } finally {
       this.inventoryLoaded = true;
     }
@@ -1921,8 +1955,8 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     const totalValues = this.salesTotalSeries.map((s) => s.value);
     const counts = this.salesCountSeries.map((s) => s.value);
     const range = this.zoomRange ?? { startIndex: 0, endIndex: profitValues.length - 1 };
-    const startIndex = Math.max(0, Math.min(range.startIndex - 1, profitValues.length - 1));
-    const endIndex = Math.max(startIndex, Math.min(range.endIndex + 1, profitValues.length - 1));
+    const startIndex = Math.max(0, Math.min(range.startIndex, profitValues.length - 1));
+    const endIndex = Math.max(startIndex, Math.min(range.endIndex, profitValues.length - 1));
 
     let profitSum = 0;
     let revenueSum = 0;
@@ -2447,6 +2481,107 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     return total;
   }
 
+  private async loadAlertData(produtos: Produto[]): Promise<void> {
+    const ativos = produtos
+      .filter((p) => this.getProductQuantity(p) > 0)
+      .sort((a, b) => this.compareProductNames(a, b));
+
+    this.lowStockAlerts = ativos
+      .filter((p) => this.getProductQuantity(p) <= this.lowStockThreshold)
+      .sort((a, b) => this.getProductQuantity(a) - this.getProductQuantity(b) || this.compareProductNames(a, b))
+      .map((p) => ({
+        name: p.nome,
+        detail: `Quantidade atual: ${this.getProductQuantity(p)}`,
+        value: this.formatMoney(Number(p.precoVenda ?? 0)),
+      }));
+
+    this.lowMarginAlerts = ativos
+      .filter((p) => Number(p.margemLucro ?? 0) < this.lowMarginThreshold)
+      .sort((a, b) => Number(a.margemLucro ?? 0) - Number(b.margemLucro ?? 0) || this.compareProductNames(a, b))
+      .map((p) => ({
+        name: p.nome,
+        detail: `Margem atual: ${this.formatPercent(Number(p.margemLucro ?? 0))}`,
+        value: this.formatMoney(Number(p.precoVenda ?? 0)),
+      }));
+
+    try {
+      const end = new Date();
+      const start = new Date(end);
+      start.setDate(start.getDate() - this.staleDaysThreshold);
+      const movimentos = await firstValueFrom(
+        this.produtos
+          .listarMovimentos(undefined, 20000, 0, this.formatIsoDate(start), this.formatIsoDate(end))
+          .pipe(timeout(8000))
+      );
+      const movedIds = new Set(
+        (movimentos.items ?? [])
+          .map((m) => Number((m as any).produtoId))
+          .filter((id) => Number.isFinite(id))
+      );
+      this.staleProductAlerts = ativos
+        .filter((p) => typeof p.id === 'number' && !movedIds.has(p.id))
+        .map((p) => ({
+          name: p.nome,
+          detail: `Sem movimentação nos últimos ${this.staleDaysThreshold} dias.`,
+          value: `Qtd: ${this.getProductQuantity(p)}`,
+        }));
+    } catch {
+      this.staleProductAlerts = [];
+    }
+  }
+
+  openAlertDialog(kind: DashboardAlertKind): void {
+    const data = this.getAlertDialogData(kind);
+    this.dialog.open(PainelAlertDialogComponent, {
+      autoFocus: false,
+      maxWidth: '95vw',
+      width: 'min(92vw, 780px)',
+      panelClass: 'ml-dialog',
+      data,
+    });
+  }
+
+  private getAlertDialogData(kind: DashboardAlertKind): PainelAlertDialogData {
+    switch (kind) {
+      case 'lowStock':
+        return {
+          title: 'Produtos com estoque baixo',
+          description: `Produtos com estoque positivo e quantidade menor ou igual a ${this.lowStockThreshold}.`,
+          items: this.lowStockAlerts,
+          emptyMessage: 'Nenhum produto com estoque baixo no momento.',
+        };
+      case 'staleProducts':
+        return {
+          title: 'Produtos parados',
+          description: `Produtos sem movimentação registrada nos últimos ${this.staleDaysThreshold} dias.`,
+          items: this.staleProductAlerts,
+          emptyMessage: 'Nenhum produto parado no período analisado.',
+        };
+      case 'lowMargin':
+      default:
+        return {
+          title: 'Margens abaixo do esperado',
+          description: `Produtos com margem de lucro menor que ${this.lowMarginThreshold}%.`,
+          items: this.lowMarginAlerts,
+          emptyMessage: 'Nenhum produto abaixo da margem mínima definida.',
+        };
+    }
+  }
+
+  private getProductQuantity(produto: Produto): number {
+    const qtdRaw = (produto as any).quantidade ?? (produto as any).estoque ?? 0;
+    const qtd = Number(qtdRaw ?? 0);
+    return Number.isFinite(qtd) ? qtd : 0;
+  }
+
+  private formatPercent(value: number): string {
+    return `${value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
+  }
+
+  private compareProductNames(a: Produto, b: Produto): number {
+    return (a.nome ?? '').localeCompare(b.nome ?? '', 'pt-BR', { sensitivity: 'base' });
+  }
+
   private abrirUltimaVenda(): void {
     if (!this.loja?.id) return;
     this.pdv.list(undefined, undefined, undefined, 0, 200).subscribe({
@@ -2484,6 +2619,157 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     const diff = day === 0 ? -6 : 1 - day;
     date.setDate(date.getDate() + diff);
     return date;
+  }
+}
+
+interface AlertDialogItem {
+  name: string;
+  detail: string;
+  value?: string;
+}
+
+type DashboardAlertKind = 'lowStock' | 'staleProducts' | 'lowMargin';
+
+interface PainelAlertDialogData {
+  title: string;
+  description: string;
+  items: AlertDialogItem[];
+  emptyMessage: string;
+}
+
+@Component({
+  standalone: true,
+  selector: 'app-painel-alert-dialog',
+  imports: [CommonModule, MatDialogModule],
+  template: `
+    <section class="dialog">
+      <div class="dialog__header">
+        <div>
+          <h3>{{ data.title }}</h3>
+          <p>{{ data.description }}</p>
+        </div>
+        <button type="button" class="ghost" (click)="close()">Fechar</button>
+      </div>
+
+      <div class="dialog__content" *ngIf="data.items.length; else emptyState">
+        <article class="dialog__item" *ngFor="let item of data.items">
+          <div class="dialog__item-main">
+            <strong>{{ item.name }}</strong>
+            <span>{{ item.detail }}</span>
+          </div>
+          <span class="dialog__item-value" *ngIf="item.value">{{ item.value }}</span>
+        </article>
+      </div>
+
+      <ng-template #emptyState>
+        <div class="dialog__empty">{{ data.emptyMessage }}</div>
+      </ng-template>
+    </section>
+  `,
+  styles: [`
+    .dialog {
+      width: min(92vw, 780px);
+      padding: 24px;
+      background: linear-gradient(180deg, rgba(21, 27, 50, 0.98), rgba(11, 16, 31, 0.98));
+      color: #e5eefc;
+      border: 1px solid rgba(240, 210, 122, 0.35);
+      border-radius: 22px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+    }
+
+    .dialog__header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .dialog__header h3 {
+      margin: 0 0 6px;
+      font-size: 1.2rem;
+    }
+
+    .dialog__header p {
+      margin: 0;
+      color: rgba(226, 232, 240, 0.76);
+      line-height: 1.45;
+    }
+
+    .ghost {
+      border: 1px solid rgba(240, 210, 122, 0.35);
+      background: transparent;
+      color: #f8e28a;
+      border-radius: 999px;
+      padding: 10px 16px;
+      cursor: pointer;
+    }
+
+    .dialog__content {
+      display: grid;
+      gap: 12px;
+      max-height: min(62vh, 560px);
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .dialog__item {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .dialog__item-main {
+      display: grid;
+      gap: 4px;
+    }
+
+    .dialog__item-main span {
+      color: rgba(226, 232, 240, 0.78);
+      font-size: 0.92rem;
+    }
+
+    .dialog__item-value {
+      color: #f8e28a;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .dialog__empty {
+      padding: 24px 12px 8px;
+      color: rgba(226, 232, 240, 0.72);
+    }
+
+    @media (max-width: 640px) {
+      .dialog {
+        padding: 18px;
+        border-radius: 18px;
+      }
+
+      .dialog__header,
+      .dialog__item {
+        display: grid;
+      }
+
+      .ghost {
+        justify-self: start;
+      }
+    }
+  `],
+})
+export class PainelAlertDialogComponent {
+  constructor(
+    private ref: MatDialogRef<PainelAlertDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: PainelAlertDialogData
+  ) {}
+
+  close(): void {
+    this.ref.close();
   }
 }
 
