@@ -144,7 +144,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                 <small class="muted">Periodo: {{ salesRangeLabel }}</small>
               </div>
               <div class="kpi">
-                <span class="kpi__label">Lucro lÃ­quido</span>
+                <span class="kpi__label">Lucro liquido</span>
                 <strong class="kpi__value">Manutenção</strong>
                 <small class="muted">Fluxo de caixa</small>
               </div>
@@ -179,9 +179,9 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                 <small class="muted">Liquida (em breve)</small>
               </div>
               <div class="kpi">
-                <span class="kpi__label">Ticket médio</span>
-                <strong class="kpi__value">{{ visibleTicketLabel }}</strong>
-                <small class="muted">Vendas finalizadas</small>
+                <span class="kpi__label">Media de venda</span>
+                <strong class="kpi__value">{{ visibleAverageSalesLabel }}</strong>
+                <small class="muted">Total / periodo visivel</small>
               </div>
               <div class="kpi">
                 <span class="kpi__label">Vendas (qtde)</span>
@@ -255,7 +255,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                   type="button"
                   (click)="toggleSectorChart()"
                   [attr.aria-pressed]="showSectorChart"
-                  title="Alternar grÃ¡fico"
+                  title="Alternar grafico"
                 >
                   <span class="material-symbols-outlined">bar_chart</span>
                 </button>
@@ -336,7 +336,7 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                 />
               </label>
               <label>
-                <span class="muted">AtÃ©</span>
+                <span class="muted">Ate</span>
                 <input
                   type="date"
                   [value]="rangeEnd"
@@ -966,7 +966,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   visibleProfitLabel = 'R$ 0,00';
   visibleServiceRevenueLabel = 'R$ 0,00';
   visibleTotalLabel = 'R$ 0,00';
-  visibleTicketLabel = 'R$ 0,00';
+  visibleAverageSalesLabel = 'R$ 0,00';
   visibleSalesCount = 0;
   visibleInventoryCostLabel = 'R$ 0,00';
   visibleInventorySaleLabel = 'R$ 0,00';
@@ -1943,7 +1943,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       this.visibleProfitLabel = this.formatMoney(0);
       this.visibleServiceRevenueLabel = this.formatMoney(0);
       this.visibleTotalLabel = this.formatMoney(0);
-      this.visibleTicketLabel = this.formatMoney(0);
+      this.visibleAverageSalesLabel = this.formatMoney(0);
       this.visibleSalesCount = 0;
       this.salesRangeLabel = this.rangeLabel(this.salesRangeDays);
       return;
@@ -1976,8 +1976,8 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.visibleServiceRevenueLabel = this.formatMoney(serviceSum);
     this.visibleTotalLabel = this.formatMoney(totalSum);
     this.visibleSalesCount = countSum;
-    const ticket = countSum > 0 ? revenueSum / countSum : 0;
-    this.visibleTicketLabel = this.formatMoney(ticket);
+    const visiblePeriodCount = Math.max(1, endIndex - startIndex + 1);
+    this.visibleAverageSalesLabel = this.formatMoney(totalSum / visiblePeriodCount);
     this.updateSalesRangeLabelFromZoom();
   }
 
@@ -2772,5 +2772,9 @@ export class PainelAlertDialogComponent {
     this.ref.close();
   }
 }
+
+
+
+
 
 
