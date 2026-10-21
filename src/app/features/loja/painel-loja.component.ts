@@ -5,7 +5,25 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { firstValueFrom, forkJoin, from, of, Subject } from 'rxjs';
 import { catchError, mergeMap, takeUntil, toArray, timeout } from 'rxjs/operators';
-import * as echarts from 'echarts';
+// echarts modular: registra so o que o painel usa (linha, pizza, grid, tooltip, zoom interno).
+// Ao usar um novo tipo de grafico/componente, registre-o em echarts.use abaixo.
+import * as echarts from 'echarts/core';
+import { LineChart, PieChart, type LineSeriesOption, type PieSeriesOption } from 'echarts/charts';
+import {
+  DataZoomInsideComponent,
+  GridComponent,
+  TooltipComponent,
+  type DataZoomComponentOption,
+  type GridComponentOption,
+  type TooltipComponentOption,
+} from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
+
+echarts.use([LineChart, PieChart, GridComponent, TooltipComponent, DataZoomInsideComponent, CanvasRenderer]);
+
+type EChartsOption = echarts.ComposeOption<
+  LineSeriesOption | PieSeriesOption | GridComponentOption | TooltipComponentOption | DataZoomComponentOption
+>;
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
 import { PdvService, SaleDetailsDto, SaleItemSummaryDto, SaleListItemDto, SalesSeriesPointDto } from '../../core/services/pdv.service';
@@ -978,7 +996,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private salesCancel$ = new Subject<void>();
   private salesDetailsCache = new Map<number, SaleDetailsDto>();
   private renderScheduled = false;
-  private chart: echarts.ECharts | null = null;
+  private chart: echarts.EChartsType | null = null;
   private wheelHandler: ((ev: WheelEvent) => void) | null = null;
   showSectorChart = false;
   sectorChartMode: 'pie' | 'line' = 'pie';
@@ -1507,7 +1525,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       const { startIndex, endIndex } = this.getZoomIndexes(labels);
       const showSymbols = true;
 
-      const option: echarts.EChartsOption = {
+      const option: EChartsOption = {
         backgroundColor: 'transparent',
         animation: false,
         grid: { left: 64, right: 28, top: 16, bottom: 48 },
@@ -1614,7 +1632,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       itemStyle: { color: this.getSetorColor(s.id, s.name) },
     }));
 
-      const option: echarts.EChartsOption = {
+      const option: EChartsOption = {
         backgroundColor: 'transparent',
         animation: false,
         tooltip: {
@@ -1656,7 +1674,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const labels = this.salesBucketStarts.map((d, idx) => this.salesProfitSeries[idx]?.label ?? this.formatShortDate(d));
     const showSymbols = labels.length <= 60;
-    const option: echarts.EChartsOption = {
+    const option: EChartsOption = {
       backgroundColor: 'transparent',
       animation: false,
       grid: { left: 64, right: 24, top: 16, bottom: 32 },
