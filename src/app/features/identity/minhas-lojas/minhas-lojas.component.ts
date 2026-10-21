@@ -670,12 +670,7 @@ export class MinhasLojasComponent implements OnInit {
         this.loadingOverview = false;
         this.overviewError = 'Não foi possível carregar o consolidado das lojas.';
         this.loading = false;
-
-        if (err?.status === 401) {
-          alert('Sessão expirada. Faça login novamente.');
-          this.auth.clear();
-          this.router.navigateByUrl('/login');
-        }
+        // 401 (sessao expirada) e tratado no httpErrorInterceptor
       }
     });
   }

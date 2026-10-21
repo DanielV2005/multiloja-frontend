@@ -1,7 +1,7 @@
 ﻿import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { UsuarioService, LoginResponse } from '../../../core/services/usuario.service';
 import { AuthStorageService } from '../../../core/services/auth-storage.service';
 
@@ -61,6 +61,9 @@ import { AuthStorageService } from '../../../core/services/auth-storage.service'
           </small>
         </div>
 
+        <small class="hint" *ngIf="sessaoExpirada && !errorMessage">
+          Sua sess&#227;o expirou. Entre novamente para continuar.
+        </small>
         <small class="hint error" *ngIf="errorMessage">{{ errorMessage }}</small>
 
         <button class="btn btn--primary" [disabled]="loading || form.invalid">
@@ -125,10 +128,12 @@ export class LoginComponent {
   private api = inject(UsuarioService);
   private authStorage = inject(AuthStorageService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   show = false;
   loading = false;
   errorMessage = '';
+  sessaoExpirada = this.route.snapshot.queryParamMap.get('sessao') === 'expirada';
   year = new Date().getFullYear();
 
   form = this.fb.group({
@@ -195,6 +200,7 @@ export class LoginComponent {
   private getErrorMessage(err: any): string {
     const body = err?.error;
     if (err?.status === 400) return 'Usuario ou senha incorreto.';
+    if (err?.status === 0 || err?.status >= 500) return String(body?.message ?? 'Erro ao conectar.');
     if (typeof body === 'string' && body.trim()) return body.trim();
     if (body?.message) return String(body.message).trim();
     if (body?.title) return String(body.title).trim();

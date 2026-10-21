@@ -7,10 +7,11 @@ export const authGuard: CanActivateFn = (route, state) => {
   const router = inject(Router);
 
   if (!auth.token || auth.isExpired) {
+    // so avisa "sessao expirada" se havia um login; sem token e apenas acesso nao autenticado
+    const expirou = !!auth.token;
     auth.clear();
-    alert('Sessao expirada. Faca login novamente.');
     router.navigate(['/login'], {
-      queryParams: { returnUrl: state.url }
+      queryParams: expirou ? { sessao: 'expirada' } : {}
     });
     return false;
   }

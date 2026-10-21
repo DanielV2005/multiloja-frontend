@@ -9,6 +9,7 @@ import {
   withInterceptors,
 } from '@angular/common/http';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { httpErrorInterceptor } from './core/interceptors/http-error.interceptor';
 
 import { provideAnimations } from '@angular/platform-browser/animations';
 
@@ -29,7 +30,7 @@ export const appConfig: ApplicationConfig = {
     ),
     provideHttpClient(
       withFetch(),
-      withInterceptors([authInterceptor]),
+      withInterceptors([authInterceptor, httpErrorInterceptor]),
     ),
     provideAnimations(),
     { provide: LOCALE_ID, useValue: 'pt-BR' },
