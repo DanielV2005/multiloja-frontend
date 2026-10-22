@@ -74,7 +74,7 @@ export interface ProdutoFormDialogData {
           />
           <small
             class="error"
-            *ngIf="nomeCtrl?.touched && nomeCtrl?.invalid && !nomeServerError"
+            *ngIf="nomeCtrl.touched && nomeCtrl.invalid && !nomeServerError"
           >
             Informe o nome do produto.
           </small>
@@ -98,7 +98,7 @@ export interface ProdutoFormDialogData {
           </select>
           <small
             class="error"
-            *ngIf="setorIdCtrl?.touched && setorIdCtrl?.invalid && !semSetorAtivo"
+            *ngIf="setorIdCtrl.touched && setorIdCtrl.invalid && !semSetorAtivo"
           >
             Selecione um setor.
           </small>
@@ -134,7 +134,7 @@ export interface ProdutoFormDialogData {
           />
           <small
             class="error"
-            *ngIf="quantidadeCtrl?.touched && quantidadeCtrl?.invalid"
+            *ngIf="quantidadeCtrl.touched && quantidadeCtrl.invalid"
           >
             Informe uma quantidade &ge; 0.
           </small>
@@ -151,7 +151,7 @@ export interface ProdutoFormDialogData {
           />
           <small
             class="error"
-            *ngIf="precoCustoCtrl?.touched && precoCustoCtrl?.invalid"
+            *ngIf="precoCustoCtrl.touched && precoCustoCtrl.invalid"
           >
             Informe o preço de custo &ge; 0.
           </small>
@@ -168,7 +168,7 @@ export interface ProdutoFormDialogData {
           />
           <small
             class="error"
-            *ngIf="precoVendaCtrl?.touched && precoVendaCtrl?.invalid"
+            *ngIf="precoVendaCtrl.touched && precoVendaCtrl.invalid"
           >
             Informe o preço de venda &ge; 0.
           </small>
@@ -480,11 +480,11 @@ export class ProdutoFormDialogComponent implements OnInit {
   }
 
   // GETTERS para usar no template
-  get nomeCtrl()        { return this.form.get('nome'); }
-  get setorIdCtrl()     { return this.form.get('setorId'); }
-  get quantidadeCtrl()  { return this.form.get('quantidade'); }
-  get precoCustoCtrl()  { return this.form.get('precoCusto'); }
-  get precoVendaCtrl()  { return this.form.get('precoVenda'); }
+  get nomeCtrl()        { return this.form.get('nome')!; }
+  get setorIdCtrl()     { return this.form.get('setorId')!; }
+  get quantidadeCtrl()  { return this.form.get('quantidade')!; }
+  get precoCustoCtrl()  { return this.form.get('precoCusto')!; }
+  get precoVendaCtrl()  { return this.form.get('precoVenda')!; }
 
   /** Margem formatada em texto (apenas exibição) */
   get margemFormatada(): string {
