@@ -9,6 +9,7 @@ import {
   Setor
 } from '../../../core/services/setor.service';
 import { ProdutoService } from '../../../core/services/produto.service';
+import { AuthStorageService } from '../../../core/services/auth-storage.service';
 
 import {
   SetorFormDialogComponent,
@@ -51,7 +52,7 @@ import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component
                 <span class="material-symbols-outlined">edit</span>
               </button>
 
-              <button class="icon-btn danger" (click)="desativar(s)">
+              <button class="icon-btn danger" *ngIf="isAdmin" (click)="desativar(s)" title="Desativar (somente administrador)">
                 <span class="material-symbols-outlined">delete</span>
               </button>
             </div>
@@ -319,6 +320,9 @@ export class SetoresDialogComponent implements OnInit {
   private dialog = inject(MatDialog);
   private produtoService = inject(ProdutoService);
 
+  /** Desativar/reativar setor e restrito a Admin no backend (nivelAcesso 1). */
+  readonly isAdmin = inject(AuthStorageService).nivelAcesso === 1;
+
   setores: Setor[] = [];
 
    ngOnInit(): void {
@@ -380,7 +384,7 @@ export class SetoresDialogComponent implements OnInit {
         },
         error: (err: any) => {
           console.error('Erro ao desativar setor', err);
-          alert('Não foi possível desativar o setor.');
+          alert(err?.error?.message ?? 'Não foi possível desativar o setor.');
         }
       });
     });

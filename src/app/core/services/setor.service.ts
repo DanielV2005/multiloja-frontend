@@ -10,13 +10,11 @@ export interface Setor {
   nome: string;
   descricao?: string | null;
   ativo: boolean;
-  setorPaiId?: number | null;
 }
 
 export interface NovoSetor {
   nome: string;
   descricao?: string | null;
-  setorPaiId?: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -33,7 +31,7 @@ export class SetorService {
     return [];
   }
 
-  /** Lista setores ATIVOS */
+  /** Lista TODOS os setores (ativos e desativados); filtre por `ativo` onde so ativos fizerem sentido */
   listar(filtro: string = ''): Observable<Setor[]> {
     let params = new HttpParams().set('_ts', String(Date.now()));
     if (filtro?.trim()) {

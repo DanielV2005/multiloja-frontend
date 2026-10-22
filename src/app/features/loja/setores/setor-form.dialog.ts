@@ -44,7 +44,7 @@ export interface SetorFormData {
           formControlName="nome"
           placeholder="Ex.: Vendas" />
         <small class="error" *ngIf="form.controls.nome.touched && form.controls.nome.invalid && !nomeDuplicado">
-          Informe um nome v&aacute;lido (at&eacute; 80 caracteres).
+          Informe um nome v&aacute;lido (at&eacute; 120 caracteres).
         </small>
         <small class="error" *ngIf="nomeDuplicado">
           Ja existe um setor com este nome (ativo ou desativado).
@@ -131,8 +131,8 @@ export class SetorFormDialogComponent {
   nomeDuplicado = false;
 
   form = this.fb.nonNullable.group({
-    nome: ['', [Validators.required, Validators.maxLength(80)]],
-    descricao: ['']
+    nome: ['', [Validators.required, Validators.maxLength(120)]],
+    descricao: ['', [Validators.maxLength(240)]]
   });
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: SetorFormData) {
@@ -190,7 +190,13 @@ export class SetorFormDialogComponent {
         next: () => this.ref.close(true),
         error: (err: any) => {
           console.error('Erro ao salvar setor', err);
-          alert('Nao foi possivel salvar o setor.');
+          if (err?.status === 409) {
+            // nome duplicado detectado pelo backend (ex.: criado por outra pessoa ao mesmo tempo)
+            this.nomeDuplicado = true;
+            this.form.controls.nome.setErrors({ duplicated: true });
+            return;
+          }
+          alert(err?.error?.message ?? 'Nao foi possivel salvar o setor.');
         }
       });
   }

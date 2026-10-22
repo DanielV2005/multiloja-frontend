@@ -93,14 +93,17 @@ export interface ProdutoFormDialogData {
               *ngFor="let s of setores"
               [value]="s.id"
             >
-              {{ s.nome }}
+              {{ s.nome }}{{ s.ativo === false ? ' (desativado)' : '' }}
             </option>
           </select>
           <small
             class="error"
-            *ngIf="setorIdCtrl?.touched && setorIdCtrl?.invalid"
+            *ngIf="setorIdCtrl?.touched && setorIdCtrl?.invalid && !semSetorAtivo"
           >
             Selecione um setor.
+          </small>
+          <small class="error" *ngIf="semSetorAtivo">
+            Nenhum setor ativo. Cadastre ou reative um setor.
           </small>
         </div>
       </div>
@@ -200,7 +203,7 @@ export interface ProdutoFormDialogData {
       <button
         type="button"
         class="btn btn-gold"
-        [disabled]="form.invalid || salvando"
+        [disabled]="form.invalid || salvando || semSetorAtivo"
         (click)="salvar()"
       >
         <span
@@ -435,6 +438,7 @@ export interface ProdutoFormDialogData {
 export class ProdutoFormDialogComponent implements OnInit {
   form: FormGroup;
   setores: Setor[] = [];
+  private setoresCarregados = false;
   salvando = false;
   errorMessage = '';
   nomeServerError = '';
@@ -515,9 +519,20 @@ export class ProdutoFormDialogComponent implements OnInit {
     this.form.get('codigoBarra')?.valueChanges.subscribe(() => this.clearFieldError('codigoBarra'));
   }
 
+  /** Sem nenhum setor selecionavel: nao ha como salvar o produto. */
+  get semSetorAtivo(): boolean {
+    return this.setoresCarregados && this.setores.length === 0;
+  }
+
   private carregarSetores(): void {
+    // A API lista ativos e desativados. So os ativos podem receber produto; na edicao,
+    // o setor atual do produto continua na lista (marcado como desativado) para nao sumir.
+    const setorAtualId = this.isEdicao ? this.data.produto?.setorFilhoId ?? null : null;
     this.setorService.listar().subscribe({
-      next: setores => this.setores = setores ?? [],
+      next: setores => {
+        this.setores = (setores ?? []).filter(s => s.ativo !== false || s.id === setorAtualId);
+        this.setoresCarregados = true;
+      },
       error: err => console.error('[ProdutoFormDialog] erro ao carregar setores', err),
     });
   }

@@ -8,6 +8,7 @@ import { PdvService } from '../../../core/services/pdv.service';
 import { ProdutoService, Produto } from '../../../core/services/produto.service';
 import { SetorService } from '../../../core/services/setor.service';
 import { UsuarioService, Loja } from '../../../core/services/usuario.service';
+import { AuthStorageService } from '../../../core/services/auth-storage.service';
 import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.component';
 
 @Component({
@@ -307,6 +308,7 @@ export class ProdutosDesativadosPageComponent implements OnInit {
   private setorService = inject(SetorService);
   private pdv = inject(PdvService);
   private dialog = inject(MatDialog);
+  private auth = inject(AuthStorageService);
 
   lojaId = 0;
   loja: Loja | null = null;
@@ -392,6 +394,11 @@ export class ProdutosDesativadosPageComponent implements OnInit {
       if (setorId <= 0) {
         return;
       }
+      // reativar setor e restrito a Admin (nivelAcesso 1); antes o Gerente clicava e nada acontecia
+      if (this.auth.nivelAcesso !== 1) {
+        alert(`O setor "${this.nomeSetor(produto)}" está desativado. Peça a um administrador para reativá-lo antes de reativar este produto.`);
+        return;
+      }
       this.dialog.open(ReativacaoSetorConfirmDialogComponent, {
         autoFocus: false,
         data: {
@@ -417,6 +424,7 @@ export class ProdutosDesativadosPageComponent implements OnInit {
           },
           error: err => {
             console.error('[ProdutosDesativadosPage] erro ao reativar setor para produto', err);
+            alert(err?.error?.message ?? 'Não foi possível reativar o setor deste produto.');
             this.reativandoId = null;
           },
         });

@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 
 import { SetorService, Setor } from '../../../core/services/setor.service';
+import { AuthStorageService } from '../../../core/services/auth-storage.service';
 
 @Component({
   standalone: true,
@@ -32,7 +33,7 @@ import { SetorService, Setor } from '../../../core/services/setor.service';
               <div class="desc muted" *ngIf="s.descricao">{{ s.descricao }}</div>
             </div>
 
-            <button class="btn btn-restore" (click)="reativar(s)">
+            <button class="btn btn-restore" *ngIf="isAdmin" (click)="reativar(s)">
               <span class="material-symbols-outlined">settings_backup_restore</span>
               <span>Reativar</span>
             </button>
@@ -197,6 +198,9 @@ export class SetoresDesativadosDialogComponent implements OnInit {
   private api = inject(SetorService);
   private ref = inject(MatDialogRef<SetoresDesativadosDialogComponent, boolean>);
 
+  /** Reativar setor e restrito a Admin no backend (nivelAcesso 1). */
+  readonly isAdmin = inject(AuthStorageService).nivelAcesso === 1;
+
   setores: Setor[] = [];
 
   ngOnInit(): void {
@@ -222,7 +226,7 @@ export class SetoresDesativadosDialogComponent implements OnInit {
       },
       error: (err: any) => {
         console.error('Erro ao reativar setor', err);
-        alert('Não foi possível reativar o setor.');
+        alert(err?.error?.message ?? 'Não foi possível reativar o setor.');
       }
     });
   }
