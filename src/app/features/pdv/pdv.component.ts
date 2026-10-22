@@ -7,7 +7,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
 import { AuthStorageService } from '../../core/services/auth-storage.service';
 import { ItensVendaveisService, ItemVendavelDto } from '../../core/services/itens-vendaveis.service';
-import { PdvService, SaleListItemDto, SaleSummaryDto } from '../../core/services/pdv.service';
+import { PaymentInput, PdvService, SaleListItemDto, SaleSummaryDto } from '../../core/services/pdv.service';
 import { firstValueFrom, forkJoin } from 'rxjs';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 import { VendaDetalhesDialogComponent } from '../loja/relatorios/vendas-page.component';
@@ -1573,60 +1573,49 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       this.releaseCheckoutLock(this.currentSale.id);
       return;
     }
-    try {
-      await this.enviarPagamentosAntesDoCheckout();
-    } catch (err: any) {
-      console.error('[PDV] erro ao registrar pagamentos', err);
-      alert(err?.error?.message ?? 'Nao foi possivel registrar pagamentos.');
-      this.releaseCheckoutLock(this.currentSale.id);
-      return;
-    }
+    const saleId = this.currentSale.id;
+    const concluir = () => {
+      this.removeSale(saleId);
+      this.markSaleClosed(saleId);
+      this.releaseCheckoutLock(saleId);
+      this.ensureSaleOpen();
+      this.resetSearch();
+      this.focusSearch();
+      this.notifySalesChanged();
+    };
 
-    this.pdvService.checkout(this.currentSale.id).subscribe({
-      next: sale => {
-        this.removeSale(sale.id);
-        this.markSaleClosed(sale.id);
-        this.releaseCheckoutLock(sale.id);
-        this.ensureSaleOpen();
-        this.resetSearch();
-        this.focusSearch();
-        this.notifySalesChanged();
-      },
-      error: err => {
+    // Envia a lista completa numa unica chamada: o backend substitui os pagamentos anteriores,
+    // entao tentar de novo apos uma falha nao duplica valores.
+    this.pdvService.checkout(saleId, this.montarPagamentosParaCheckout()).subscribe({
+      next: () => concluir(),
+      error: async err => {
+        // A venda pode ter fechado mesmo com a resposta perdida (ex.: queda de rede)
+        const jaFinalizada = await firstValueFrom(this.pdvService.get(saleId))
+          .then(s => this.statusLabel(String(s.status)) === 'FINALIZADA' || Number(s.status) === 2)
+          .catch(() => false);
+        if (jaFinalizada) {
+          concluir();
+          return;
+        }
         console.error('[PDV] erro ao finalizar venda', err);
         alert(err?.error?.message ?? 'Nao foi possivel finalizar a venda.');
-        this.releaseCheckoutLock(this.currentSale?.id ?? 0);
+        this.releaseCheckoutLock(saleId);
       }
     });
   }
 
-  private async enviarPagamentosAntesDoCheckout(): Promise<void> {
-    if (!this.currentSale) return;
-    const payments = this.currentPayments;
-    const sentMethods = new Set<number>();
-    for (const p of payments) {
-      if (!p.amount || p.amount <= 0) continue;
-      if (p.method === 1) {
-        sentMethods.add(1);
-        continue;
-      }
-      await firstValueFrom(this.pdvService.addPayment(this.currentSale.id, {
-        saleId: this.currentSale.id,
-        method: p.method,
-        amount: p.amount,
-        refCode: p.refCode ?? null,
-      }));
-    }
+  /** Pagamentos em outras formas + o restante em dinheiro (dinheiro lancado na tela e so referencia de troco). */
+  private montarPagamentosParaCheckout(): PaymentInput[] {
+    const centavos = (v: number) => Math.round(v * 100) / 100;
+    const pagamentos: PaymentInput[] = this.currentPayments
+      .filter(p => p.method !== 1 && p.amount > 0)
+      .map(p => ({ method: p.method, amount: centavos(p.amount), refCode: p.refCode ?? null }));
 
-    const restante = this.valorRestanteVirtual;
-    if (restante > 0 && !sentMethods.has(1)) {
-      await firstValueFrom(this.pdvService.addPayment(this.currentSale.id, {
-        saleId: this.currentSale.id,
-        method: 1,
-        amount: restante,
-        refCode: null,
-      }));
+    const restante = centavos(this.totalValue - pagamentos.reduce((acc, p) => acc + p.amount, 0));
+    if (restante > 0) {
+      pagamentos.push({ method: 1, amount: restante, refCode: null });
     }
+    return pagamentos;
   }
 
   cancelarVenda(): void {

@@ -922,10 +922,10 @@ interface ExchangeItem {
               <strong>R$ {{ exchangeTotal | number:'1.2-2' }}</strong>
             </div>
             <div>
-              <span class="label">DiferenÃ§a</span>
-              <strong [class.positive]="exchangeDelta > 0" [class.negative]="exchangeDelta < 0">
-                {{ exchangeDelta > 0 ? 'Falta pagar' : exchangeDelta < 0 ? 'Troco' : 'Sem diferenÃ§a' }}
-                {{ exchangeDelta !== 0 ? ('R$ ' + (exchangeDeltaAbs | number:'1.2-2')) : '' }}
+              <span class="label">Diferença</span>
+              <strong [class.positive]="settlementValue > 0" [class.negative]="settlementValue < 0">
+                {{ settlementValue > 0 ? 'Cliente paga' : settlementValue < 0 ? 'Devolver ao cliente' : 'Sem diferença' }}
+                {{ settlementValue !== 0 ? ('R$ ' + (settlementValueAbs | number:'1.2-2')) : '' }}
               </strong>
             </div>
           </div>
@@ -955,6 +955,15 @@ interface ExchangeItem {
             </div>
           </div>
           <textarea class="reason" [(ngModel)]="returnReason" rows="2" placeholder="Ex.: cliente devolveu item"></textarea>
+
+          <div class="inline-group settlement" *ngIf="canReturn() && settlementValue !== 0">
+            <span class="inline-label">
+              {{ settlementValue < 0 ? 'Reembolsar' : 'Cliente paga' }} R$ {{ settlementValueAbs | number:'1.2-2' }} em:
+            </span>
+            <select [(ngModel)]="settlementMethod">
+              <option *ngFor="let m of settlementMethods" [ngValue]="m">{{ paymentMethodLabel(m) }}</option>
+            </select>
+          </div>
         </div>
 
           <div class="section" *ngIf="returnOperation === 'Troca'">
@@ -995,6 +1004,8 @@ interface ExchangeItem {
         </div>
       </div>
 
+      <div class="return-error" *ngIf="returnError">{{ returnError }}</div>
+
       <footer class="dialog-footer">
         <div class="totals" *ngIf="details">
           <span>Valor da devolução:</span>
@@ -1002,7 +1013,7 @@ interface ExchangeItem {
         </div>
         <button class="btn btn-outline" type="button" (click)="close()">Fechar</button>
         <button class="btn btn-gold" type="button" (click)="confirmReturn()" [disabled]="!canReturn() || saving">
-          {{ saving ? 'Salvando...' : 'Confirmar devolução' }}
+          {{ saving ? 'Salvando...' : returnOperation === 'Troca' ? 'Confirmar troca' : 'Confirmar devolução' }}
         </button>
       </footer>
     </section>
@@ -1241,6 +1252,23 @@ interface ExchangeItem {
       .exchange-summary .label{ color:var(--muted); font-size:.85rem; }
       .exchange-summary .positive{ color:#facc15; }
       .exchange-summary .negative{ color:#38bdf8; }
+      .settlement{ margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+      .settlement select{
+        height:34px;
+        border-radius:10px;
+        border:1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        padding: 0 8px;
+      }
+      .return-error{
+        margin-top:8px;
+        padding:8px 12px;
+        border-radius:10px;
+        border:1px solid rgba(248,113,113,.6);
+        color:#fca5a5;
+        background:rgba(127,29,29,.25);
+      }
     @media (max-width: 900px){
       .inline-actions{ grid-template-columns:1fr; }
     }
@@ -1320,6 +1348,9 @@ export class VendaDetalhesDialogComponent {
   exchangeResults: Produto[] = [];
   exchangeItems: ExchangeItem[] = [];
   private exchangeTimer?: any;
+  readonly settlementMethods = [1, 2, 3, 4, 5];
+  settlementMethod = 1;
+  returnError = '';
 
   private saleIds: number[];
   private index: number;
@@ -1362,6 +1393,8 @@ export class VendaDetalhesDialogComponent {
     this.exchangeSearch = '';
     this.exchangeResults = [];
     this.exchangeItems = [];
+    this.settlementMethod = 1;
+    this.returnError = '';
     this.pdv.getDetails(saleId).subscribe({
       next: (details) => {
         this.details = details;
@@ -1417,7 +1450,8 @@ export class VendaDetalhesDialogComponent {
   }
 
   canReturn(): boolean {
-    return this.returnLines.some(l => l.returnQty > 0);
+    if (!this.returnLines.some(l => l.returnQty > 0)) return false;
+    return this.returnOperation !== 'Troca' || this.exchangeItems.some(i => i.quantity > 0);
   }
 
   get returnTotal(): number {
@@ -1428,12 +1462,18 @@ export class VendaDetalhesDialogComponent {
     return this.exchangeItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   }
 
-  get exchangeDelta(): number {
-    return this.exchangeTotal - this.returnTotal;
+  /**
+   * Valor que o backend vai lancar no caixa: negativo = reembolso ao cliente, positivo = cliente paga a
+   * diferenca da troca. Aplica o desconto/acrescimo da venda, como o backend faz ao recalcular o total.
+   */
+  get settlementValue(): number {
+    const fator = 1 - Number(this.details?.discountPercent ?? 0) / 100;
+    const entregue = this.returnOperation === 'Troca' ? this.exchangeTotal : 0;
+    return Math.round((entregue - this.returnTotal) * fator * 100) / 100;
   }
 
-  get exchangeDeltaAbs(): number {
-    return Math.abs(this.exchangeDelta);
+  get settlementValueAbs(): number {
+    return Math.abs(this.settlementValue);
   }
 
   trackExchange(_: number, item: ExchangeItem): number {
@@ -1534,6 +1574,7 @@ export class VendaDetalhesDialogComponent {
     }
 
     this.saving = true;
+    this.returnError = '';
       const exchangeInfo = this.returnOperation === 'Troca' && this.exchangeItems.length
         ? `Itens troca: ${this.exchangeItems.map(i => `${i.nome} x${i.quantity} (R$ ${i.unitPrice.toFixed(2)})`).join(', ')}`
         : '';
@@ -1558,6 +1599,7 @@ export class VendaDetalhesDialogComponent {
             quantity: i.quantity,
           }))
         : [],
+      settlementMethod: this.settlementMethod,
     })
     .subscribe({
       next: (updated) => {
@@ -1574,6 +1616,7 @@ export class VendaDetalhesDialogComponent {
       },
       error: (err) => {
         console.error('[VendaDetalhes] erro ao salvar devolução', err);
+        this.returnError = err?.error?.message ?? 'Não foi possível registrar a devolução.';
         this.saving = false;
       },
     });
@@ -1630,7 +1673,9 @@ export class VendaDetalhesDialogComponent {
       .join('');
     const payments = (details.payments ?? [])
       .map(p => {
-        const method = this.paymentMethodLabel(p.method);
+        // Lancamentos de devolucao/troca levam a descricao no refCode (ex.: "Reembolso de devolução")
+        const ajuste = /^(Reembolso|Diferença)/.test(p.refCode ?? '');
+        const method = ajuste ? `${this.paymentMethodLabel(p.method)} - ${p.refCode}` : this.paymentMethodLabel(p.method);
         const amount = Number(p.amount ?? 0);
         return `
           <tr>

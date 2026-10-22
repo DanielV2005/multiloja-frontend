@@ -143,6 +143,12 @@ export interface AddPaymentRequest {
   refCode?: string | null;
 }
 
+export interface PaymentInput {
+  method: number;
+  amount: number;
+  refCode?: string | null;
+}
+
 export interface ReturnSaleItemRequest {
   saleItemId: number;
   quantity: number;
@@ -164,6 +170,8 @@ export interface ReturnSaleRequest {
   returnType: number;
   items: ReturnSaleItemRequest[];
   exchangeItems?: ExchangeSaleItemRequest[] | null;
+  /** Forma do reembolso ou da diferenca paga pelo cliente na troca (backend usa Dinheiro se omitido). */
+  settlementMethod?: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -256,8 +264,9 @@ export class PdvService {
     return this.http.post<SaleSummaryDto>(`${this.api}/${saleId}/payments`, body);
   }
 
-  checkout(saleId: number): Observable<SaleSummaryDto> {
-    return this.http.post<SaleSummaryDto>(`${this.api}/${saleId}/checkout`, {});
+  /** Com `payments`, a lista substitui os pagamentos ja lancados: repetir a chamada nao duplica valores. */
+  checkout(saleId: number, payments?: PaymentInput[]): Observable<SaleSummaryDto> {
+    return this.http.post<SaleSummaryDto>(`${this.api}/${saleId}/checkout`, payments ? { payments } : {});
   }
 
   cancel(saleId: number): Observable<void> {
