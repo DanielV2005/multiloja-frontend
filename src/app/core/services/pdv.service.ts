@@ -136,13 +136,6 @@ export interface SetDiscountRequest {
   percent: number;
 }
 
-export interface AddPaymentRequest {
-  saleId: number;
-  method: number;
-  amount: number;
-  refCode?: string | null;
-}
-
 export interface PaymentInput {
   method: number;
   amount: number;
@@ -252,16 +245,8 @@ export class PdvService {
     return this.http.post<SaleSummaryDto>(`${this.api}/${saleId}/items`, body);
   }
 
-  removeItem(saleId: number, itemId: number): Observable<SaleSummaryDto> {
-    return this.http.delete<SaleSummaryDto>(`${this.api}/${saleId}/items/${itemId}`);
-  }
-
   setDiscount(saleId: number, percent: number): Observable<SaleSummaryDto> {
     return this.http.post<SaleSummaryDto>(`${this.api}/${saleId}/discount`, { saleId, percent });
-  }
-
-  addPayment(saleId: number, body: AddPaymentRequest): Observable<SaleSummaryDto> {
-    return this.http.post<SaleSummaryDto>(`${this.api}/${saleId}/payments`, body);
   }
 
   /** Com `payments`, a lista substitui os pagamentos ja lancados: repetir a chamada nao duplica valores. */

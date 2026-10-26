@@ -36,6 +36,12 @@ interface DraftSale {
   createdAt: Date;
 }
 
+interface QueueEntry {
+  kind: 'sale' | 'draft';
+  id: number | string;
+  createdAt: Date;
+}
+
 interface DraftPayload {
   id: string;
   createdAt: string;
@@ -56,7 +62,7 @@ interface DraftPayload {
       <div class="open-sales" *ngIf="queueEntries.length">
         <span
           class="chip"
-          *ngFor="let entry of queueEntries"
+          *ngFor="let entry of queueEntries; trackBy: trackQueue"
           [class.active]="isEntryActive(entry)"
           (click)="selectEntry(entry)"
         >
@@ -983,6 +989,13 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private quantityPending = new Map<string, number | string | null>();
   private quantityInFlight = new Set<string>();
   private cartLoading = new Set<number>();
+  private queueCache: {
+    sales: SaleSummaryDto[];
+    drafts: DraftSale[];
+    draftsLen: number;
+    entries: QueueEntry[];
+    index: Map<number | string, number>;
+  } | null = null;
   private quantityTargets = new Map<string, number>();
   private stockWarningAt = new Map<string, number>();
   private stockWarningOpen = false;
@@ -1062,10 +1075,22 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     this.handleTabClose(true);
   }
 
-  get queueEntries(): { kind: 'sale' | 'draft'; id: number | string; createdAt: Date }[] {
+  // A fila e lida varias vezes a cada atualizacao da tela: so recalcula quando vendas ou rascunhos mudam
+  get queueEntries(): QueueEntry[] {
+    const c = this.queueCache;
+    if (c && c.sales === this.openSales && c.drafts === this.draftSales && c.draftsLen === this.draftSales.length) {
+      return c.entries;
+    }
     const sales = this.openSales.map(s => ({ kind: 'sale' as const, id: s.id, createdAt: new Date(s.createdAt) }));
     const drafts = this.draftSales.map((d: DraftSale) => ({ kind: 'draft' as const, id: d.id, createdAt: d.createdAt }));
-    return [...sales, ...drafts].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const entries = [...sales, ...drafts].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const index = new Map<number | string, number>(entries.map((e, i) => [e.id, i + 1]));
+    this.queueCache = { sales: this.openSales, drafts: this.draftSales, draftsLen: this.draftSales.length, entries, index };
+    return entries;
+  }
+
+  trackQueue(_: number, entry: QueueEntry): string {
+    return `${entry.kind}:${entry.id}`;
   }
 
   isEntryActive(entry: { kind: 'sale' | 'draft'; id: number | string }): boolean {
@@ -2265,50 +2290,6 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     this.paymentsBySale.set(draftKey, payments);
   }
 
-  private addItemToDraft(item: ItemVendavelDto, fromBarcode: boolean): void {
-    if (!this.currentDraftId) return;
-
-    const qty = this.parseDecimal(this.quantidadePadrao || 1);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      return;
-    }
-    const key = this.toDraftKey(this.currentDraftId);
-    const cart = this.cartBySale.get(key) ?? [];
-    const tipoKey = String(item.tipo).toUpperCase();
-    const cartKey = `${tipoKey}:${item.id}`;
-    const existing = cart.find(x => x.key === cartKey);
-
-      if (item.tipo === 'PRODUTO' && item.estoque != null) {
-        const jaNoCarrinho = existing?.quantity ?? 0;
-        if (jaNoCarrinho + qty > item.estoque) {
-          return;
-        }
-      }
-
-    if (existing) {
-      existing.quantity += qty;
-    } else {
-      cart.push({
-        key: cartKey,
-        produtoId: item.id,
-        tipo: (String(item.tipo).toUpperCase() === 'SERVICO' ? 'SERVICO' : 'PRODUTO'),
-        nome: item.nome,
-        codigoBarra: null,
-        unitPrice: Number(item.precoVenda ?? 0),
-        quantity: qty,
-        estoque: item.estoque ?? null,
-      });
-    }
-
-    this.cartBySale.set(key, [...cart]);
-    this.quantidadePadrao = 1;
-    if (fromBarcode) {
-      this.resetSearch();
-    }
-    this.persistDraftState();
-    this.applyDraftToView();
-  }
-
   private focusSearch(): void {
     const el = this.searchInput?.nativeElement;
     if (el) {
@@ -2446,7 +2427,9 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   queueIndex(entry: { id: number | string } | number | string): number {
     const id = typeof entry === 'object' ? entry.id : entry;
-    return this.queueEntries.findIndex(e => e.id === id) + 1;
+    if (id == null) return 0;
+    this.queueEntries; // garante o cache atualizado
+    return this.queueCache?.index.get(id) ?? 0;
   }
 
   private sortSalesByCreated(list: SaleSummaryDto[]): SaleSummaryDto[] {
