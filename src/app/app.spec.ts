@@ -1,23 +1,34 @@
 import { TestBed } from '@angular/core/testing';
-import { App } from './app';
+import { provideRouter } from '@angular/router';
+import { AppComponent } from './app';
+import { AuthStorageService } from './core/services/auth-storage.service';
 
-describe('App', () => {
+describe('AppComponent', () => {
+  let token: string | null;
+
   beforeEach(async () => {
+    token = null;
     await TestBed.configureTestingModule({
-      imports: [App],
+      imports: [AppComponent],
+      providers: [
+        provideRouter([]),
+        { provide: AuthStorageService, useValue: { get token() { return token; }, clear: () => (token = null) } },
+      ],
     }).compileComponents();
   });
 
-  it('should create the app', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    expect(app).toBeTruthy();
+  it('cria o componente', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('should render title', () => {
-    const fixture = TestBed.createComponent(App);
+  it('esconde o botao de tema sem usuario logado e mostra com login', () => {
+    const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, multiloja-web.client');
+    expect(fixture.nativeElement.querySelector('.theme-toggle')).toBeNull();
+
+    token = 'jwt';
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.theme-toggle')).not.toBeNull();
   });
 });
