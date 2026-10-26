@@ -5,7 +5,25 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { firstValueFrom, forkJoin, from, of, Subject } from 'rxjs';
 import { catchError, mergeMap, takeUntil, toArray, timeout } from 'rxjs/operators';
-import * as echarts from 'echarts';
+// echarts modular: registra so o que o painel usa (linha, grid, tooltip, zoom interno).
+// Ao usar um novo tipo de grafico/componente, registre-o em echarts.use abaixo.
+import * as echarts from 'echarts/core';
+import { LineChart, type LineSeriesOption } from 'echarts/charts';
+import {
+  DataZoomInsideComponent,
+  GridComponent,
+  TooltipComponent,
+  type DataZoomComponentOption,
+  type GridComponentOption,
+  type TooltipComponentOption,
+} from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
+
+echarts.use([LineChart, GridComponent, TooltipComponent, DataZoomInsideComponent, CanvasRenderer]);
+
+type EChartsOption = echarts.ComposeOption<
+  LineSeriesOption | GridComponentOption | TooltipComponentOption | DataZoomComponentOption
+>;
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
 import { PdvService, SaleDetailsDto, SaleItemSummaryDto, SaleListItemDto, SalesSeriesPointDto } from '../../core/services/pdv.service';
@@ -258,18 +276,6 @@ import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component
                   title="Alternar grafico"
                 >
                   <span class="material-symbols-outlined">bar_chart</span>
-                </button>
-                <button
-                  class="btn-secondary icon-btn"
-                  type="button"
-                  (click)="toggleSectorChartMode()"
-                  [disabled]="!showSectorChart"
-                  [attr.aria-pressed]="sectorChartMode === 'line'"
-                  title="Alternar modelo"
-                >
-                  <span class="material-symbols-outlined">
-                    {{ sectorChartMode === 'line' ? 'show_chart' : 'pie_chart' }}
-                  </span>
                 </button>
                 <button class="btn-secondary" type="button" (click)="refreshSalesChart()" [disabled]="salesLoading">
                   Atualizar
@@ -949,7 +955,6 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   salesTotalSeries: Array<{ label: string; value: number }> = [];
   salesServiceSeries: Array<{ label: string; value: number }> = [];
   salesCountSeries: Array<{ label: string; value: number }> = [];
-  sectorChartData: Array<{ id: number; name: string; value: number }> = [];
   sectorLineSeries: Array<{ id: number; name: string; data: number[] }> = [];
   private sectorLineLoading = false;
   private lastSectorLineKey = '';
@@ -978,10 +983,9 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private salesCancel$ = new Subject<void>();
   private salesDetailsCache = new Map<number, SaleDetailsDto>();
   private renderScheduled = false;
-  private chart: echarts.ECharts | null = null;
+  private chart: echarts.EChartsType | null = null;
   private wheelHandler: ((ev: WheelEvent) => void) | null = null;
   showSectorChart = false;
-  sectorChartMode: 'pie' | 'line' = 'pie';
   private zoomRange: { startIndex: number; endIndex: number } | null = null;
   private manualRange: { start: Date; end: Date } | null = null;
   private isRenderingChart = false;
@@ -1082,18 +1086,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
   toggleSectorChart(): void {
     this.showSectorChart = !this.showSectorChart;
-    if (this.showSectorChart && !this.sectorChartData.length) {
-      this.loadTopSetoresBySales();
-    }
-    if (this.showSectorChart && this.sectorChartMode === 'line') {
-      this.loadSectorLineChart();
-    }
-    this.renderChart();
-  }
-
-  toggleSectorChartMode(): void {
-    this.sectorChartMode = this.sectorChartMode === 'pie' ? 'line' : 'pie';
-    if (this.showSectorChart && this.sectorChartMode === 'line') {
+    if (this.showSectorChart) {
       this.loadSectorLineChart();
     }
     this.renderChart();
@@ -1489,11 +1482,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.isRenderingChart = true;
     try {
     if (this.showSectorChart) {
-      if (this.sectorChartMode === 'line') {
-        this.renderSectorLineChart();
-      } else {
-        this.renderSectorChart();
-      }
+      this.renderSectorLineChart();
       return;
     }
     const activeSeries = this.salesMetric === 'count' ? this.salesCountSeries : this.salesTotalSeries;
@@ -1507,7 +1496,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       const { startIndex, endIndex } = this.getZoomIndexes(labels);
       const showSymbols = true;
 
-      const option: echarts.EChartsOption = {
+      const option: EChartsOption = {
         backgroundColor: 'transparent',
         animation: false,
         grid: { left: 64, right: 28, top: 16, bottom: 48 },
@@ -1601,52 +1590,6 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
 
-  private renderSectorChart(): void {
-    if (!this.chart) return;
-    if (!this.sectorChartData.length) {
-      this.chart.clear();
-      return;
-    }
-
-    const data = this.sectorChartData.map((s) => ({
-      name: s.name,
-      value: s.value,
-      itemStyle: { color: this.getSetorColor(s.id, s.name) },
-    }));
-
-      const option: echarts.EChartsOption = {
-        backgroundColor: 'transparent',
-        animation: false,
-        tooltip: {
-        trigger: 'item',
-        backgroundColor: 'rgba(8, 12, 24, 0.95)',
-        borderColor: 'rgba(240, 210, 122, 0.6)',
-        textStyle: { color: '#e5e7eb' },
-        formatter: (p: any) => {
-          const name = p?.name ?? '';
-          const value = this.formatMoney(Number(p?.value ?? 0));
-          const percent = Number(p?.percent ?? 0).toFixed(1);
-          return `${name}<br/>${value}<br/>${percent}%`;
-        },
-      },
-        series: [
-          {
-            type: 'pie',
-          radius: ['35%', '70%'],
-          center: ['50%', '52%'],
-          avoidLabelOverlap: true,
-          label: { color: '#e5e7eb' },
-          labelLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.45)' } },
-          data,
-        },
-        ],
-      };
-
-      this.ngZone.runOutsideAngular(() => {
-        this.chart?.setOption(option, true);
-      });
-    }
-
   private renderSectorLineChart(): void {
     if (!this.chart) return;
     if (!this.sectorLineSeries.length || !this.salesBucketStarts.length) {
@@ -1656,7 +1599,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const labels = this.salesBucketStarts.map((d, idx) => this.salesProfitSeries[idx]?.label ?? this.formatShortDate(d));
     const showSymbols = labels.length <= 60;
-    const option: echarts.EChartsOption = {
+    const option: EChartsOption = {
       backgroundColor: 'transparent',
       animation: false,
       grid: { left: 64, right: 24, top: 16, bottom: 32 },
@@ -2210,7 +2153,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.pdv.listItemSummary(dataInicio, dataFim, [2]).pipe(timeout(8000)).subscribe({
       next: (items) => {
         this.applyTopSetores(items);
-        if (this.showSectorChart && this.sectorChartMode === 'line') {
+        if (this.showSectorChart) {
           this.loadSectorLineChart();
         }
       },
@@ -2300,7 +2243,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
         return { id, name, data };
       });
 
-      if (this.showSectorChart && this.sectorChartMode === 'line') {
+      if (this.showSectorChart) {
         this.renderChart();
       }
       },
@@ -2352,12 +2295,6 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
         valor,
         percentual,
       }));
-
-    this.sectorChartData = entries.map(({ id, nome, valor }) => ({
-      id,
-      name: nome,
-      value: valor,
-    }));
   }
 
   private isProdutoItem(item: SaleItemSummaryDto): boolean {
