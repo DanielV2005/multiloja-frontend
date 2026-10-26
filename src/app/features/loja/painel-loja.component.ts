@@ -32,6 +32,7 @@ import { Setor, SetorService } from '../../core/services/setor.service';
 import { FuncionarioFormDialogComponent } from './funcionarios/funcionario-form.dialog';
 import { SetoresDialogComponent } from './setores/setores-dialog';
 import { VendaDetalhesDialogComponent } from './relatorios/vendas-page.component';
+import { formatBRL, formatDecimal } from '../../shared/format';
 
 @Component({
   standalone: true,
@@ -1715,7 +1716,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   formatMoney(value: number): string {
-    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    return formatBRL(value);
   }
 
   setSalesRange(days: number): void {
@@ -2512,7 +2513,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private formatPercent(value: number): string {
-    return `${value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
+    return `${formatDecimal(value, 0, 2)}%`;
   }
 
   private compareProductNames(a: Produto, b: Produto): number {

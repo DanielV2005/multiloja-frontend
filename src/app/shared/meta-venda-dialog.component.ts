@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Component, Inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import { formatBRL, formatDecimal } from './format';
 
 export interface MetaVendaDialogData {
   lojaId: number | null;
@@ -191,7 +192,7 @@ export class MetaVendaDialogComponent {
   }
 
   formatMoney(value: number): string {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+    return formatBRL(value || 0);
   }
 
   sanitizeMeta(): void {
@@ -234,10 +235,7 @@ export class MetaVendaDialogComponent {
   private formatPercentLabel(value: number): string {
     const clamped = this.clampPercent(value);
     const truncated = Math.trunc(clamped * 10000) / 10000; // sem arredondar (4 casas)
-    return new Intl.NumberFormat('pt-BR', {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4,
-    }).format(truncated);
+    return formatDecimal(truncated, 4, 4);
   }
 
   private storageKey(): string {

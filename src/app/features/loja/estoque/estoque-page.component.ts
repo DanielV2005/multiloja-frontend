@@ -17,6 +17,7 @@ import {
 import { EstoqueMovimentoDialogComponent } from './estoque-movimento.dialog';
 import { EstoqueTransferenciaDialogComponent } from './estoque-transferencia.dialog';
 import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.component';
+import { formatBRL, formatDecimal } from '../../../shared/format';
 
 @Component({
   standalone: true,
@@ -610,12 +611,7 @@ export class EstoquePageComponent implements OnInit {
 
   fmtMoney(value: number | string | null | undefined): string {
     const n = this.toNumber(value);
-    return n.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return formatBRL(n);
   }
 
   private truncateTo(value: number, decimals: number): number {
@@ -647,29 +643,20 @@ export class EstoquePageComponent implements OnInit {
     }
 
     const truncated = this.truncateTo(scaled, 2);
-    const formatted = truncated.toLocaleString('pt-BR', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    });
+    const formatted = formatDecimal(truncated, 0, 2);
     return `R$ ${this.trimTrailingZeros(formatted)}${suffix}`;
   }
 
   fmtPercentResumo(value: number | string | null | undefined): string {
     const n = this.toNumber(value);
     const truncated = this.truncateTo(n, 2);
-    const formatted = truncated.toLocaleString('pt-BR', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    });
+    const formatted = formatDecimal(truncated, 0, 2);
     return `${this.trimTrailingZeros(formatted)}%`;
   }
 
   fmtNumber(value: number | string | null | undefined): string {
     const n = this.toNumber(value);
-    return n.toLocaleString('pt-BR', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return formatDecimal(n, 2, 2);
   }
 
   private carregarDados(): void {
@@ -1054,12 +1041,7 @@ export class EstoqueRankingDialogComponent {
 
   fmtMoney(value: number | string | null | undefined): string {
     const n = this.toNumber(value);
-    return n.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return formatBRL(n);
   }
 
   fmtMoneyResumo(value: number | string | null | undefined): string {
@@ -1081,28 +1063,19 @@ export class EstoqueRankingDialogComponent {
     }
 
     const truncated = this.truncateTo(scaled, 2);
-    const formatted = truncated.toLocaleString('pt-BR', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    });
+    const formatted = formatDecimal(truncated, 0, 2);
     return `R$ ${this.trimTrailingZeros(formatted)}${suffix}`;
   }
 
   fmtPercentResumo(value: number | string | null | undefined): string {
     const n = this.toNumber(value);
     const truncated = this.truncateTo(n, 2);
-    const formatted = truncated.toLocaleString('pt-BR', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    });
+    const formatted = formatDecimal(truncated, 0, 2);
     return `${this.trimTrailingZeros(formatted)}%`;
   }
 
   fmtNumber(value: number | string | null | undefined): string {
     const n = this.toNumber(value);
-    return n.toLocaleString('pt-BR', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return formatDecimal(n, 2, 2);
   }
 }

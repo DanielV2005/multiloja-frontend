@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, ElementRef, ViewChild, HostListener, inject, OnDestroy, OnInit } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, ViewChild, HostListener, inject, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -11,6 +11,7 @@ import { PaymentInput, PdvService, SaleListItemDto, SaleSummaryDto } from '../..
 import { firstValueFrom, forkJoin } from 'rxjs';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 import { VendaDetalhesDialogComponent } from '../loja/relatorios/vendas-page.component';
+import { formatBRL } from '../../shared/format';
 
 interface CartItem {
   key: string;
@@ -132,7 +133,7 @@ interface DraftPayload {
         <div class="results" *ngIf="!buscando">
           <div class="empty" *ngIf="filtro && resultados.length === 0">Nenhum item encontrado.</div>
 
-          <div class="item" *ngFor="let item of resultados">
+          <div class="item" *ngFor="let item of resultados; trackBy: trackResultado">
             <div class="item-main">
               <div class="item-name">{{ item.nome }}</div>
               <div class="item-meta">
@@ -172,7 +173,7 @@ interface DraftPayload {
             <span class="num">Total</span>
           </div>
 
-          <div class="cart-row" *ngFor="let item of currentItems">
+          <div class="cart-row" *ngFor="let item of currentItems; trackBy: trackCartItem">
             <div class="item-cell">
               <div class="name">{{ item.nome }}</div>
               <div class="meta muted">{{ item.tipo }}</div>
@@ -254,7 +255,7 @@ interface DraftPayload {
 
           <div class="payments-scroll">
             <div class="payment-list" *ngIf="currentPayments.length">
-              <div class="payment-row" *ngFor="let p of currentPayments">
+              <div class="payment-row" *ngFor="let p of currentPayments; trackBy: trackPayment">
                 <div class="payment-main">
                   <select [(ngModel)]="p.method" [disabled]="!p.editing" class="pdv-focus-summary">
                     <option [ngValue]="2">Pix</option>
@@ -944,6 +945,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private dialog = inject(MatDialog);
   private auth = inject(AuthStorageService);
   private host = inject(ElementRef<HTMLElement>);
+  private zone = inject(NgZone);
 
   private lastSaleLoading = false;
   private lastSaleDialogOpen = false;
@@ -1029,25 +1031,28 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     this.loadDraftState();
     this.loadSaleState();
     this.startTabHeartbeat();
+    // Registrado fora do Angular: o heartbeat das outras abas grava no localStorage a cada 5s e
+    // atualizaria a tela inteira. So volta para o Angular quando a chave interessa a esta tela.
     this.storageListener = (event: StorageEvent) => {
-      if (!event.key) return;
-      if (event.key === this.draftStorageKey()) {
-        this.loadDraftState();
+      const key = event.key;
+      if (!key) return;
+      if (key === this.draftStorageKey()) {
+        this.zone.run(() => this.loadDraftState());
         return;
       }
-      if (event.key === this.saleStateKey()) {
-        this.loadSaleState();
+      if (key === this.saleStateKey()) {
+        this.zone.run(() => this.loadSaleState());
         return;
       }
-      if (event.key.startsWith(this.saleClosedPrefix())) {
-        this.handleSaleClosedKey(event.key);
+      if (key.startsWith(this.saleClosedPrefix())) {
+        this.zone.run(() => this.handleSaleClosedKey(key));
         return;
       }
-      if (event.key === this.salesSyncKey()) {
-        this.carregarAbertas();
+      if (key === this.salesSyncKey()) {
+        this.zone.run(() => this.carregarAbertas());
       }
     };
-    window.addEventListener('storage', this.storageListener);
+    this.zone.runOutsideAngular(() => window.addEventListener('storage', this.storageListener!));
     this.beforeUnloadListener = () => {
       this.handleTabClose(false);
     };
@@ -1091,6 +1096,19 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   trackQueue(_: number, entry: QueueEntry): string {
     return `${entry.kind}:${entry.id}`;
+  }
+
+  // Mantem as linhas ja desenhadas quando a lista e recarregada (busca, carrinho, pagamentos)
+  trackResultado(_: number, item: ItemVendavelDto): string {
+    return `${item.tipo}:${item.id}`;
+  }
+
+  trackCartItem(_: number, item: CartItem): string {
+    return item.key;
+  }
+
+  trackPayment(index: number, p: PaymentEntry): string {
+    return p.id || `#${index}`;
   }
 
   isEntryActive(entry: { kind: 'sale' | 'draft'; id: number | string }): boolean {
@@ -1984,7 +2002,9 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   private startTabHeartbeat(): void {
     this.touchTab();
-    this.tabHeartbeatId = window.setInterval(() => this.touchTab(), this.tabHeartbeatMs);
+    // So grava no localStorage: roda fora do Angular para nao atualizar a tela a cada 5s
+    this.tabHeartbeatId = this.zone.runOutsideAngular(() =>
+      window.setInterval(() => this.touchTab(), this.tabHeartbeatMs));
   }
 
   private stopTabHeartbeat(): void {
@@ -2729,13 +2749,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   }
 
   fmtMoney(value: number | string | null | undefined): string {
-    const n = Number(value ?? 0);
-    return n.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return formatBRL(Number(value ?? 0));
   }
 
   statusLabel(status: string | undefined): string {
