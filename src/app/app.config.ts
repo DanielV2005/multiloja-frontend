@@ -1,5 +1,5 @@
 // src/app/app.config.ts
-import { ApplicationConfig, LOCALE_ID } from '@angular/core';
+import { ApplicationConfig, LOCALE_ID, provideZoneChangeDetection } from '@angular/core';
 import { provideRouter, withInMemoryScrolling } from '@angular/router';
 import { routes } from './app.routes';
 
@@ -11,8 +11,6 @@ import {
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { httpErrorInterceptor } from './core/interceptors/http-error.interceptor';
 
-import { provideAnimations } from '@angular/platform-browser/animations';
-
 import { registerLocaleData } from '@angular/common';
 import localePt from '@angular/common/locales/pt';
 
@@ -21,6 +19,8 @@ registerLocaleData(localePt, 'pt-BR');
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    // Varios eventos do mesmo clique/tecla (input, keydown do documento...) geram uma unica atualizacao da tela
+    provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(
       routes,
       withInMemoryScrolling({
@@ -32,7 +32,6 @@ export const appConfig: ApplicationConfig = {
       withFetch(),
       withInterceptors([authInterceptor, httpErrorInterceptor]),
     ),
-    provideAnimations(),
     { provide: LOCALE_ID, useValue: 'pt-BR' },
   ],
 };
