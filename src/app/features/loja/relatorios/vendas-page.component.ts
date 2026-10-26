@@ -987,7 +987,7 @@ interface ExchangeItem {
             </div>
           </div>
 
-          <div class="section" *ngIf="details.returns?.length">
+          <div class="section" *ngIf="details.returns.length">
             <h4>Devoluções registradas</h4>
           <div class="returns">
             <div class="return-card" *ngFor="let ret of details.returns; trackBy: trackReturn">

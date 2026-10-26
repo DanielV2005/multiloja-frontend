@@ -48,8 +48,8 @@ import { formatBRL, formatDecimal } from '../../shared/format';
 
         <div class="title">
           <h2>{{ loja?.nome || 'Loja' }}</h2>
-          <small class="muted" *ngIf="loja?.endereco">
-            {{ loja?.endereco }}
+          <small class="muted" *ngIf="loja?.endereco as endereco">
+            {{ endereco }}
           </small>
         </div>
 
