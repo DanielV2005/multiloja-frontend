@@ -223,7 +223,7 @@ interface DraftPayload {
         <div class="discount">
           <label>Desconto/Acr&#233;scimo (%)</label>
           <div class="discount-row">
-            <input type="number" min="-100" max="100" step="0.01" [(ngModel)]="discountPercent" class="pdv-focus-summary" />
+            <input type="number" min="-99.99" max="100" step="0.01" [(ngModel)]="discountPercent" class="pdv-focus-summary" />
             <button
               class="btn btn-outline"
               type="button"
@@ -241,6 +241,9 @@ interface DraftPayload {
           </div>
           <div class="payment-hint muted">
             Dispon&#237;vel para outras formas: {{ fmtMoney(valorRestanteVirtual) }}
+          </div>
+          <div class="payment-over" *ngIf="valorPagoVirtual - totalValue > 0.005">
+            Pagamentos passam do total em {{ fmtMoney(valorPagoVirtual - totalValue) }}. Ajuste antes de finalizar.
           </div>
 
           <div class="payments-scroll">
@@ -801,6 +804,7 @@ interface DraftPayload {
       border: 2px solid rgba(8,12,26,.8);
     }
     .payment-list{ display:flex; flex-direction:column; gap:6px; }
+    .payment-over{ color:#fca5a5; font-size:.85rem; font-weight:600; }
     .payment-row{
       display:flex;
       flex-direction:column;
@@ -977,6 +981,9 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private quantityTimers = new Map<string, number>();
   private quantityErrors = new Map<string, string>();
   private quantityPending = new Map<string, number | string | null>();
+  private quantityInFlight = new Set<string>();
+  private cartLoading = new Set<number>();
+  private quantityTargets = new Map<string, number>();
   private stockWarningAt = new Map<string, number>();
   private stockWarningOpen = false;
   private searchStockAlertOpen = false;
@@ -1228,18 +1235,45 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     fromBarcode: boolean = false,
     keepAddItemLock: boolean = false
   ): void {
+    // Desconto e pagamentos lancados no rascunho antes do primeiro item vao para a venda criada
+    const draftId = this.currentDraftId;
+    const draftDiscount = draftId ? this.getDraftDiscount(draftId) : 0;
+    const draftPayments = draftId ? (this.paymentsBySale.get(this.toDraftKey(draftId)) ?? []) : [];
+
     this.pdvService.start(!!startNew).subscribe({
       next: sale => {
         this.replaceDraftWithSale(sale);
         this.setCurrentSale(sale);
         this.upsertOpenSale(sale);
+        if (draftPayments.length) {
+          this.paymentsBySale.set(sale.id, draftPayments.map(p => ({ ...p, editing: false })));
+          this.persistSaleState();
+        }
         this.notifySalesChanged();
-        if (pendingItem) {
-          this.adicionarItem(pendingItem, fromBarcode, keepAddItemLock);
+        const continuar = () => {
+          if (pendingItem) {
+            this.adicionarItem(pendingItem, fromBarcode, keepAddItemLock);
+            return;
+          }
+          this.addItemBusy = false;
+          this.focusSearch();
+        };
+        if (!draftDiscount) {
+          continuar();
           return;
         }
-        this.addItemBusy = false;
-        this.focusSearch();
+        this.pdvService.setDiscount(sale.id, draftDiscount).subscribe({
+          next: comDesconto => {
+            this.upsertOpenSale(comDesconto);
+            this.setCurrentSale(comDesconto);
+            continuar();
+          },
+          error: err => {
+            console.error('[PDV] erro ao aplicar desconto do rascunho', err);
+            alert(err?.error?.message ?? 'Nao foi possivel aplicar o desconto informado. Aplique novamente.');
+            continuar();
+          }
+        });
       },
       error: err => {
         console.error('[PDV] erro ao iniciar venda', err);
@@ -1263,7 +1297,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
         if (this.currentSale) {
           const stillOpen = this.openSales.find(s => s.id === this.currentSale?.id);
           if (stillOpen) {
-            this.setCurrentSale(stillOpen);
+            this.setCurrentSale(stillOpen, true);
             return;
           }
           this.currentSale = null;
@@ -1289,7 +1323,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   selectSale(sale: SaleSummaryDto): void {
     this.currentDraftId = null;
-    this.setCurrentSale(sale);
+    this.setCurrentSale(sale, true);
     this.persistDraftState();
   }
 
@@ -1318,7 +1352,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     this.applyDraftToView();
   }
 
-  private setCurrentSale(sale: SaleSummaryDto): void {
+  private setCurrentSale(sale: SaleSummaryDto, carregarItens = false): void {
     this.currentSale = sale;
     this.discountPercent = sale.discountPercent ?? 0;
     this.cashReceived = null;
@@ -1328,6 +1362,42 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     if (!this.paymentsBySale.has(sale.id)) {
       this.paymentsBySale.set(sale.id, []);
     }
+    if (carregarItens && !(this.cartBySale.get(sale.id) ?? []).length && (sale.subtotal ?? 0) > 0) {
+      this.carregarItensDoServidor(sale.id);
+    }
+  }
+
+  /** O carrinho fica no navegador; se ele se perdeu (outro computador, dados apagados), busca os itens da venda. */
+  private carregarItensDoServidor(saleId: number): void {
+    if (this.cartLoading.has(saleId)) return;
+    this.cartLoading.add(saleId);
+    this.pdvService.getDetails(saleId).subscribe({
+      next: details => {
+        this.cartLoading.delete(saleId);
+        if ((this.cartBySale.get(saleId) ?? []).length) return;
+        const itens: CartItem[] = (details.items ?? [])
+          .filter(i => i.quantity - (i.returnedQuantity ?? 0) > 0)
+          .map(i => {
+            const tipo: 'PRODUTO' | 'SERVICO' = String(i.tipo).toUpperCase() === 'SERVICO' ? 'SERVICO' : 'PRODUTO';
+            return {
+              key: `${tipo}:${i.produtoId}`,
+              produtoId: i.produtoId,
+              tipo,
+              nome: i.nome,
+              codigoBarra: i.codigoBarra ?? null,
+              unitPrice: i.unitPrice,
+              quantity: i.quantity - (i.returnedQuantity ?? 0),
+              estoque: null,
+            };
+          });
+        this.cartBySale.set(saleId, itens);
+        this.persistSaleState();
+      },
+      error: err => {
+        this.cartLoading.delete(saleId);
+        console.error('[PDV] erro ao carregar itens da venda', err);
+      },
+    });
   }
 
   private isDraftActive(): boolean {
@@ -1419,6 +1489,10 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
           }
           const msg = String(err?.error?.message ?? '');
           if (msg.toLowerCase().includes('estoque')) {
+            // O estoque mostrado na busca estava desatualizado (ex.: outro caixa vendeu o produto)
+            this.stockByProductId.set(item.id, 0);
+            this.applyStockDelta(item.id, 0);
+            this.openSearchStockAlert('zero', undefined, undefined, msg);
             return;
           }
           alert(err?.error?.message ?? 'Nao foi possivel adicionar o item.');
@@ -1429,11 +1503,12 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private openSearchStockAlert(
     tipo: 'zero' | 'excesso',
     disponivel?: number,
-    solicitado?: number
+    solicitado?: number,
+    mensagemServidor?: string
   ): void {
     if (this.searchStockAlertOpen) return;
     this.searchStockAlertOpen = true;
-    const message =
+    const message = mensagemServidor ? mensagemServidor :
       tipo === 'zero'
         ? 'Estoque insuficiente.'
         : `Quantidade maior que o estoque. Disponivel: ${disponivel ?? 0}.`;
@@ -1570,6 +1645,17 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     }
     if (this.currentPayments.some(p => p.editing)) {
       alert('Finalize ou cancele a edi\u00e7\u00e3o dos pagamentos antes de concluir.');
+      this.releaseCheckoutLock(this.currentSale.id);
+      return;
+    }
+    if (this.quantityInFlight.size > 0 || this.quantityTimers.size > 0) {
+      alert('Aguarde a atualiza\u00e7\u00e3o das quantidades e tente novamente.');
+      this.releaseCheckoutLock(this.currentSale.id);
+      return;
+    }
+    // Pagamentos lancados antes de remover item ou dar desconto podem passar do total
+    if (this.valorPagoVirtual - this.totalValue > 0.005) {
+      alert(`Os pagamentos (${this.fmtMoney(this.valorPagoVirtual)}) passam do total da venda (${this.fmtMoney(this.totalValue)}). Ajuste os pagamentos antes de finalizar.`);
       this.releaseCheckoutLock(this.currentSale.id);
       return;
     }
@@ -1755,7 +1841,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   private ensureSaleOpen(): void {
     if (this.openSales.length) {
-      this.setCurrentSale(this.openSales[0]);
+      this.setCurrentSale(this.openSales[0], true);
       return;
     }
     this.ensureDraft();
@@ -2382,8 +2468,9 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
   alterarQuantidade(item: CartItem, delta: number): void {
     this.clearQuantityError(item);
-    const alvo = (item.quantity ?? 0) + delta;
-    this.aplicarQuantidade(item, alvo);
+    // Cliques seguidos somam sobre o destino ainda em envio, nao sobre a quantidade ja confirmada
+    const base = this.quantityTargets.get(item.key) ?? item.quantity ?? 0;
+    this.aplicarQuantidade(item, base + delta);
   }
 
   alterarQuantidadeDireta(item: CartItem, value: number | string, inputEl?: HTMLInputElement): void {
@@ -2456,10 +2543,32 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
 
     if (novaQuantidade < 0) return;
 
+    // Um envio por item por vez: o backend recebe a diferenca, entao dois envios calculados sobre a mesma
+    // quantidade somariam duas vezes. Enquanto um envio esta em andamento, guarda so o destino mais recente.
+    if (this.quantityInFlight.has(item.key)) {
+      this.quantityTargets.set(item.key, novaQuantidade);
+      this.quantityPending.set(item.key, novaQuantidade);
+      return;
+    }
+
     const delta = novaQuantidade - item.quantity;
-    if (delta === 0) return;
+    if (delta === 0) {
+      this.quantityTargets.delete(item.key);
+      this.quantityPending.delete(item.key);
+      return;
+    }
 
     const saleId = this.currentSale.id;
+    this.quantityInFlight.add(item.key);
+    this.quantityTargets.set(item.key, novaQuantidade);
+    const proximo = () => {
+      this.quantityInFlight.delete(item.key);
+      const destino = this.quantityTargets.get(item.key);
+      this.quantityTargets.delete(item.key);
+      if (destino !== undefined && destino !== item.quantity && this.currentSale?.id === saleId) {
+        this.aplicarQuantidade(item, destino);
+      }
+    };
     this.pdvService.addItem(saleId, {
       saleId,
       produtoId: item.produtoId,
@@ -2478,14 +2587,25 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
         } else {
           item.quantity = novaQuantidade;
         }
-        this.quantityPending.delete(item.key);
+        if (this.quantityTargets.get(item.key) === novaQuantidade) {
+          this.quantityPending.delete(item.key);
+        }
         if (item.tipo === 'PRODUTO') {
           this.applyStockDelta(item.produtoId, delta);
         }
         this.persistSaleState();
+        if (novaQuantidade <= 0) {
+          this.quantityInFlight.delete(item.key);
+          this.quantityTargets.delete(item.key);
+          return;
+        }
+        proximo();
       },
       error: err => {
         console.error('[PDV] erro ao atualizar quantidade', err);
+        this.quantityInFlight.delete(item.key);
+        this.quantityTargets.delete(item.key);
+        this.quantityPending.delete(item.key);
         this.setQuantityError(item, err?.error?.message ?? 'Nao foi possivel atualizar a quantidade.');
       }
     });
@@ -2687,7 +2807,9 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       .list(hoje, hoje, [2], 0, 100, nome)
       .subscribe({
         next: (items) => {
-          const list = items ?? [];
+          // O backend filtra por "contem" (Ana tambem traz Mariana); aqui fica so o operador exato
+          const alvo = (this.auth.name ?? '').trim().toLowerCase();
+          const list = (items ?? []).filter(v => !alvo || (v.operadorNome ?? '').trim().toLowerCase() === alvo);
           this.lastSaleLoading = false;
           if (!list.length) {
             this.dialog.open(ConfirmDialogComponent, {

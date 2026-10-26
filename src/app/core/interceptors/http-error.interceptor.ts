@@ -30,6 +30,19 @@ export const httpErrorInterceptor: HttpInterceptorFn = (req, next) => {
 
       const body = err.error;
       const semCorpo = body == null || (typeof body === 'string' && !body.trim());
+
+      // Erro de validacao do ASP.NET ({ title, errors: { Campo: ["msg"] } }): as telas leem "message"
+      const validacao = validationMessage(body);
+      if (validacao) {
+        return throwError(() => new HttpErrorResponse({
+          error: { ...body, message: validacao, error: validacao },
+          headers: err.headers,
+          status: err.status,
+          statusText: err.statusText,
+          url: err.url ?? undefined,
+        }));
+      }
+
       if (!semCorpo && !isTechnical(body)) return throwError(() => err);
 
       if (!semCorpo) {
@@ -47,6 +60,17 @@ export const httpErrorInterceptor: HttpInterceptorFn = (req, next) => {
     }),
   );
 };
+
+function validationMessage(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as { message?: unknown; errors?: unknown };
+  if (typeof b.message === 'string' && b.message.trim()) return null;
+  if (!b.errors || typeof b.errors !== 'object') return null;
+  const mensagens = Object.values(b.errors as Record<string, unknown>)
+    .flatMap(v => (Array.isArray(v) ? v : [v]))
+    .filter((m): m is string => typeof m === 'string' && !!m.trim());
+  return mensagens.length ? mensagens.join(' ') : null;
+}
 
 function isTechnical(body: unknown): boolean {
   if (typeof body !== 'string') return false;
