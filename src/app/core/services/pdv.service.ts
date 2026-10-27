@@ -40,6 +40,8 @@ export interface SaleItemDto {
   unitPrice: number;
   quantity: number;
   returnedQuantity: number;
+  /** Preco de tabela quando o item entrou na venda; diferente de unitPrice = preco alterado no PDV. */
+  listUnitPrice?: number | null;
 }
 
 export interface SaleReturnItemDto {
@@ -134,6 +136,20 @@ export interface AddItemRequest {
 export interface SetDiscountRequest {
   saleId: number;
   percent: number;
+}
+
+/** Informe unitPrice OU lineTotal (total da linha: o backend recalcula o unitario pela quantidade). */
+export interface SetItemPriceRequest {
+  saleId: number;
+  produtoId: number;
+  tipo: string;
+  unitPrice?: number | null;
+  lineTotal?: number | null;
+}
+
+export interface SaleItemPriceResultDto {
+  sale: SaleSummaryDto;
+  item: SaleItemDto;
 }
 
 export interface PaymentInput {
@@ -243,6 +259,10 @@ export class PdvService {
 
   addItem(saleId: number, body: AddItemRequest): Observable<SaleSummaryDto> {
     return this.http.post<SaleSummaryDto>(`${this.api}/${saleId}/items`, body);
+  }
+
+  setItemPrice(saleId: number, body: SetItemPriceRequest): Observable<SaleItemPriceResultDto> {
+    return this.http.post<SaleItemPriceResultDto>(`${this.api}/${saleId}/items/price`, { ...body, saleId });
   }
 
   setDiscount(saleId: number, percent: number): Observable<SaleSummaryDto> {

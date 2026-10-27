@@ -29,7 +29,7 @@ describe('PdvComponent', () => {
   beforeEach(() => {
     localStorage.clear();
     pdv = jasmine.createSpyObj<PdvService>('PdvService',
-      ['start', 'listOpen', 'list', 'get', 'getDetails', 'addItem', 'setDiscount', 'checkout', 'cancel']);
+      ['start', 'listOpen', 'list', 'get', 'getDetails', 'addItem', 'setItemPrice', 'setDiscount', 'checkout', 'cancel']);
     pdv.cancel.and.returnValue(of(undefined));
     pdv.listOpen.and.returnValue(of([]));
     dialog = { open: jasmine.createSpy('open').and.returnValue({ afterClosed: () => of(undefined) }) };
@@ -204,6 +204,143 @@ describe('PdvComponent', () => {
       const [componente, config] = dialog.open.calls.mostRecent().args;
       expect(componente).toBe(VendaDetalhesDialogComponent);
       expect(config.data.saleIds).toEqual([1]);
+    });
+  });
+
+  describe('preco do item no carrinho', () => {
+    /** 3 sandalias a R$ 25 numa venda aberta de R$ 75. */
+    function vendaComSandalias() {
+      const sale = venda({ subtotal: 75, total: 75 });
+      c.currentSale = sale;
+      c.openSales = [sale];
+      const item = { key: 'PRODUTO:10', produtoId: 10, tipo: 'PRODUTO' as const, nome: 'Sandalia', unitPrice: 25, listUnitPrice: 25, quantity: 3, estoque: null };
+      priv().cartBySale.set(sale.id, [item]);
+      priv().paymentsBySale.set(sale.id, []);
+      return { sale, item };
+    }
+
+    /** Operador clica no campo, digita e sai (Enter/Tab). */
+    function digitarPreco(item: any, campo: 'unit' | 'total', texto: string) {
+      const input = document.createElement('input');
+      c.iniciarEdicaoPreco(item, campo, { target: input } as any);
+      input.value = texto;
+      c.confirmarEdicaoPreco(item, campo, { target: input } as any);
+      return input;
+    }
+
+    const resposta = (unitPrice: number, total: number) => ({
+      sale: venda({ subtotal: total, total }),
+      item: { id: 1, produtoId: 10, tipo: 'PRODUTO', nome: 'Sandalia', unitPrice, quantity: 3, returnedQuantity: 0, listUnitPrice: 25 },
+    });
+
+    it('troca o total da linha (75 -> 60) e mostra o unitario recalculado pelo servidor', () => {
+      const { item } = vendaComSandalias();
+      pdv.setItemPrice.and.returnValue(of(resposta(20, 60)));
+
+      const input = digitarPreco(item, 'total', '60');
+
+      expect(pdv.setItemPrice).toHaveBeenCalledOnceWith(1, jasmine.objectContaining({ produtoId: 10, tipo: 'PRODUTO', lineTotal: 60, unitPrice: null }));
+      expect(item.unitPrice).toBe(20);
+      expect(c.precoAlterado(item)).toBeTrue();
+      expect(c.totalValue).toBe(60);
+      expect(input.value).toBe('60,00');
+    });
+
+    it('aceita o valor com R$, milhar e virgula', () => {
+      const { item } = vendaComSandalias();
+      pdv.setItemPrice.and.returnValue(of(resposta(411.52, 1234.56)));
+
+      digitarPreco(item, 'total', 'R$ 1.234,56');
+
+      expect(pdv.setItemPrice.calls.mostRecent().args[1].lineTotal).toBe(1234.56);
+    });
+
+    it('Esc, campo vazio ou o mesmo valor nao enviam nada; texto invalido mostra erro', () => {
+      const { item } = vendaComSandalias();
+      const input = document.createElement('input');
+      c.iniciarEdicaoPreco(item, 'total', { target: input } as any);
+      input.value = '60';
+      c.cancelarEdicaoPreco({ target: input } as any);
+      c.confirmarEdicaoPreco(item, 'total', { target: input } as any);
+      digitarPreco(item, 'total', '');
+      digitarPreco(item, 'total', '75,00');
+      digitarPreco(item, 'unit', '25');
+      expect(pdv.setItemPrice).not.toHaveBeenCalled();
+      expect(input.value).toBe('75,00');
+
+      digitarPreco(item, 'total', 'abc');
+      expect(c.priceError(item)).toContain('inv');
+      expect(pdv.setItemPrice).not.toHaveBeenCalled();
+    });
+
+    it('espera a quantidade chegar no servidor antes de enviar o total (4 por R$ 60)', () => {
+      const { item } = vendaComSandalias();
+      const quantidade = new Subject<SaleSummaryDto>();
+      pdv.addItem.and.returnValue(quantidade);
+      pdv.setItemPrice.and.returnValue(of(resposta(15, 60)));
+
+      c.alterarQuantidade(item, 1); // 3 -> 4, ainda indo para o servidor
+      digitarPreco(item, 'total', '60');
+      expect(pdv.setItemPrice).not.toHaveBeenCalled();
+      expect(c.hasPendingPrices).toBeTrue();
+
+      quantidade.next(venda({ subtotal: 100, total: 100 }));
+      expect(item.quantity).toBe(4);
+      expect(pdv.setItemPrice).toHaveBeenCalledTimes(1);
+      expect(c.hasPendingPrices).toBeFalse();
+    });
+
+    it('com o valor sendo salvo, a quantidade espera a vez', () => {
+      const { item } = vendaComSandalias();
+      const preco = new Subject<any>();
+      pdv.setItemPrice.and.returnValue(preco);
+      pdv.addItem.and.returnValue(of(venda({ subtotal: 80, total: 80 })));
+
+      digitarPreco(item, 'total', '60');
+      c.alterarQuantidade(item, 1);
+      expect(pdv.addItem).not.toHaveBeenCalled();
+
+      preco.next(resposta(20, 60));
+      expect(pdv.addItem).toHaveBeenCalledTimes(1);
+      expect(pdv.addItem.calls.mostRecent().args[1].quantity).toBe(1);
+      expect(item.quantity).toBe(4);
+      expect(item.unitPrice).toBe(20);
+    });
+
+    it('servico com preco alterado envia o preco de tabela ao mudar a quantidade', () => {
+      const sale = venda({ subtotal: 6, total: 6 });
+      c.currentSale = sale;
+      c.openSales = [sale];
+      const item = { key: 'SERVICO:20', produtoId: 20, tipo: 'SERVICO' as const, nome: 'Impressao', unitPrice: 1.5, listUnitPrice: 2, quantity: 4, estoque: null };
+      priv().cartBySale.set(sale.id, [item]);
+      pdv.addItem.and.returnValue(of(venda({ subtotal: 7.5, total: 7.5 })));
+
+      c.alterarQuantidade(item, 1);
+
+      expect(pdv.addItem.calls.mostRecent().args[1].unitPrice).toBe(2);
+    });
+
+    it('bloqueia finalizar enquanto o valor de um item esta sendo salvo', async () => {
+      const { item } = vendaComSandalias();
+      pdv.setItemPrice.and.returnValue(new Subject<any>());
+      digitarPreco(item, 'total', '60');
+
+      await c.finalizarVenda();
+
+      expect(alertSpy).toHaveBeenCalledWith(jasmine.stringMatching('valores dos itens'));
+      expect(pdv.checkout).not.toHaveBeenCalled();
+    });
+
+    it('mostra a mensagem do servidor quando a alteracao falha', () => {
+      const { item } = vendaComSandalias();
+      spyOn(console, 'error');
+      pdv.setItemPrice.and.returnValue(throwError(() => ({ error: { message: 'Venda não está aberta.' } })));
+
+      digitarPreco(item, 'total', '60');
+
+      expect(c.priceError(item)).toBe('Venda não está aberta.');
+      expect(item.unitPrice).toBe(25);
+      expect(c.hasPendingPrices).toBeFalse();
     });
   });
 
