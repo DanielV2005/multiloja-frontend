@@ -27,7 +27,8 @@ type EChartsOption = echarts.ComposeOption<
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
 import { PdvService, SaleDetailsDto, SaleItemSummaryDto, SaleListItemDto, SalesSeriesPointDto } from '../../core/services/pdv.service';
-import { Produto, ProdutoService } from '../../core/services/produto.service';
+import { Produto, ProdutoService, ReposicaoItemDto } from '../../core/services/produto.service';
+import { ReposicaoKanbanDialogComponent } from './estoque/reposicao-kanban.dialog';
 import { Setor, SetorService } from '../../core/services/setor.service';
 import { FuncionarioFormDialogComponent } from './funcionarios/funcionario-form.dialog';
 import { SetoresDialogComponent } from './setores/setores-dialog';
@@ -233,20 +234,23 @@ import { formatBRL, formatDecimal } from '../../shared/format';
               <div class="panel">
                 <div class="panel__header">
                   <h4>Alertas</h4>
-                  <span class="muted">{{ activeAlertCount }} ativos</span>
+                  <span class="muted" *ngIf="!alertsError">{{ alertsLoading ? 'carregando...' : activeAlertCount + ' ativos' }}</span>
+                  <button type="button" class="link-btn" *ngIf="alertsError" (click)="loadAlerts()" title="Os alertas não carregaram">
+                    não carregou · tentar de novo
+                  </button>
                 </div>
                 <div class="panel__body">
                   <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('lowStock')">
                     <span class="dot" [class.warn]="lowStockAlerts.length > 0" [class.neutral]="lowStockAlerts.length === 0"></span>
-                    <span>Produtos com estoque baixo</span>
+                    <span>Produtos com estoque baixo<span class="muted" *ngIf="lowStockAlerts.length"> ({{ lowStockAlerts.length }})</span></span>
                   </button>
                   <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('staleProducts')">
                     <span class="dot" [class.warn]="staleProductAlerts.length > 0" [class.neutral]="staleProductAlerts.length === 0"></span>
-                    <span>Produtos parados (30+ dias)</span>
+                    <span>Produtos parados (30+ dias)<span class="muted" *ngIf="staleProductAlerts.length"> ({{ staleProductAlerts.length }})</span></span>
                   </button>
                   <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('lowMargin')">
                     <span class="dot" [class.warn]="lowMarginAlerts.length > 0" [class.neutral]="lowMarginAlerts.length === 0"></span>
-                    <span>Margens abaixo do esperado</span>
+                    <span>Margens abaixo do esperado<span class="muted" *ngIf="lowMarginAlerts.length"> ({{ lowMarginAlerts.length }})</span></span>
                   </button>
                 </div>
               </div>
@@ -754,6 +758,17 @@ import { formatBRL, formatDecimal } from '../../shared/format';
         border-radius: 8px;
       }
 
+      .link-btn {
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: #fca5a5;
+        font: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+
       .dot {
         width: 8px;
         height: 8px;
@@ -936,7 +951,6 @@ import { formatBRL, formatDecimal } from '../../shared/format';
   ],
 })
 export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
-  private readonly lowStockThreshold = 5;
   private readonly lowMarginThreshold = 30;
   private readonly staleDaysThreshold = 30;
   private route = inject(ActivatedRoute);
@@ -1012,6 +1026,10 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   lowStockAlerts: AlertDialogItem[] = [];
   staleProductAlerts: AlertDialogItem[] = [];
   lowMarginAlerts: AlertDialogItem[] = [];
+  // Alertas carregam a parte do resumo de estoque: uma falha aqui aparece como aviso, nao como "0 ativos"
+  alertsLoading = true;
+  alertsError = false;
+  private alertsToken = 0;
 
   menuFuncionariosAberto = false;
   menuInventarioAberto = false;
@@ -1031,11 +1049,16 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.loja(id).pipe(timeout(8000), takeUntil(this.destroy$)).subscribe({
       next: (l) => {
         this.loja = l;
+        this.loadAlerts();
         void this.loadInventorySnapshot().finally(() => {
           this.loadSalesChart();
         });
       },
-      error: () => (this.loja = null),
+      error: () => {
+        this.loja = null;
+        this.alertsLoading = false;
+        this.alertsError = true;
+      },
     });
   }
 
@@ -1775,16 +1798,12 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       this.inventoryProfitLabel = this.formatMoney(totalSale - totalCost);
       this.persistPatrimonioVenda(totalSale);
       this.scheduleTopSetoresUpdate();
-      await this.loadAlertData(produtos);
     } catch {
       this.visibleInventoryCostLabel = this.formatMoney(0);
       this.visibleInventorySaleLabel = this.formatMoney(0);
       this.inventoryProfitLabel = this.formatMoney(0);
       this.persistPatrimonioVenda(0);
       this.topSetores = [];
-      this.lowStockAlerts = [];
-      this.staleProductAlerts = [];
-      this.lowMarginAlerts = [];
     } finally {
       this.inventoryLoaded = true;
     }
@@ -2419,56 +2438,80 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     return total;
   }
 
-  private async loadAlertData(produtos: Produto[]): Promise<void> {
-    const ativos = produtos
-      .filter((p) => this.getProductQuantity(p) > 0)
-      .sort((a, b) => this.compareProductNames(a, b));
+  /**
+   * Os tres alertas vem de uma consulta so do Catalogo (produtos ativos com minimo, giro e ultima movimentacao),
+   * calculada no servidor. Antes o "parados" pedia os movimentos do periodo e o servidor cortava em 200.
+   */
+  loadAlerts(): void {
+    const token = ++this.alertsToken;
+    this.alertsLoading = true;
+    this.alertsError = false;
+    this.produtos
+      .listarReposicao(this.staleDaysThreshold)
+      .pipe(timeout(20000), takeUntil(this.destroy$))
+      .subscribe({
+        next: (dados) => {
+          if (token !== this.alertsToken) return;
+          this.applyAlertData(dados.itens ?? []);
+          this.alertsLoading = false;
+        },
+        error: (err) => {
+          if (token !== this.alertsToken) return;
+          console.error('[Painel] erro ao carregar alertas', err);
+          this.lowStockAlerts = [];
+          this.staleProductAlerts = [];
+          this.lowMarginAlerts = [];
+          this.alertsLoading = false;
+          this.alertsError = true;
+        },
+      });
+  }
 
-    this.lowStockAlerts = ativos
-      .filter((p) => this.getProductQuantity(p) <= this.lowStockThreshold)
-      .sort((a, b) => this.getProductQuantity(a) - this.getProductQuantity(b) || this.compareProductNames(a, b))
-      .map((p) => ({
-        name: p.nome,
-        detail: `Quantidade atual: ${this.getProductQuantity(p)}`,
-        value: this.formatMoney(Number(p.precoVenda ?? 0)),
+  private applyAlertData(itens: ReposicaoItemDto[]): void {
+    const porNome = (a: ReposicaoItemDto, b: ReposicaoItemDto) =>
+      (a.nome ?? '').localeCompare(b.nome ?? '', 'pt-BR', { sensitivity: 'base' });
+
+    // Abaixo do minimo de cada produto (inclui os zerados), ja na ordem de prioridade do servidor
+    this.lowStockAlerts = itens
+      .filter((i) => i.coluna === 'SEM_ESTOQUE' || i.coluna === 'CRITICO' || i.coluna === 'REPOR')
+      .map((i) => ({
+        name: i.nome,
+        detail: `Estoque ${formatDecimal(i.quantidade, 0, 3)} · mínimo ${formatDecimal(i.minimoUsado, 0, 3)}`,
+        value: `Prioridade ${i.prioridade}`,
       }));
 
-    this.lowMarginAlerts = ativos
-      .filter((p) => Number(p.margemLucro ?? 0) < this.lowMarginThreshold)
-      .sort((a, b) => Number(a.margemLucro ?? 0) - Number(b.margemLucro ?? 0) || this.compareProductNames(a, b))
-      .map((p) => ({
-        name: p.nome,
-        detail: `Margem atual: ${this.formatPercent(Number(p.margemLucro ?? 0))}`,
-        value: this.formatMoney(Number(p.precoVenda ?? 0)),
+    this.staleProductAlerts = itens
+      .filter((i) => i.parado)
+      .sort(porNome)
+      .map((i) => ({
+        name: i.nome,
+        detail: i.ultimaMovimentacao
+          ? `Última movimentação em ${new Date(i.ultimaMovimentacao).toLocaleDateString('pt-BR')}.`
+          : `Sem movimentação registrada.`,
+        value: `Qtd: ${formatDecimal(i.quantidade, 0, 3)}`,
       }));
 
-    try {
-      const end = new Date();
-      const start = new Date(end);
-      start.setDate(start.getDate() - this.staleDaysThreshold);
-      const movimentos = await firstValueFrom(
-        this.produtos
-          .listarMovimentos(undefined, 20000, 0, this.formatIsoDate(start), this.formatIsoDate(end))
-          .pipe(timeout(8000))
-      );
-      const movedIds = new Set(
-        (movimentos.items ?? [])
-          .map((m) => Number((m as any).produtoId))
-          .filter((id) => Number.isFinite(id))
-      );
-      this.staleProductAlerts = ativos
-        .filter((p) => typeof p.id === 'number' && !movedIds.has(p.id))
-        .map((p) => ({
-          name: p.nome,
-          detail: `Sem movimentação nos últimos ${this.staleDaysThreshold} dias.`,
-          value: `Qtd: ${this.getProductQuantity(p)}`,
-        }));
-    } catch {
-      this.staleProductAlerts = [];
-    }
+    // Sem preco de custo a margem fica 0: nao e margem baixa, e cadastro incompleto
+    this.lowMarginAlerts = itens
+      .filter((i) => i.quantidade > 0 && i.precoCusto > 0 && i.margemLucro < this.lowMarginThreshold)
+      .sort((a, b) => a.margemLucro - b.margemLucro || porNome(a, b))
+      .map((i) => ({
+        name: i.nome,
+        detail: `Margem atual: ${this.formatPercent(i.margemLucro)}`,
+        value: this.formatMoney(i.precoVenda),
+      }));
   }
 
   openAlertDialog(kind: DashboardAlertKind): void {
+    if (kind === 'lowStock') {
+      this.dialog
+        .open(ReposicaoKanbanDialogComponent, { autoFocus: false, maxWidth: '96vw', panelClass: 'ml-dialog' })
+        .afterClosed()
+        .subscribe((alterou?: boolean) => {
+          if (alterou) this.loadAlerts();
+        });
+      return;
+    }
     const data = this.getAlertDialogData(kind);
     this.dialog.open(PainelAlertDialogComponent, {
       autoFocus: false,
@@ -2484,7 +2527,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       case 'lowStock':
         return {
           title: 'Produtos com estoque baixo',
-          description: `Produtos com estoque positivo e quantidade menor ou igual a ${this.lowStockThreshold}.`,
+          description: 'Produtos zerados ou no estoque mínimo, por ordem de prioridade de compra.',
           items: this.lowStockAlerts,
           emptyMessage: 'Nenhum produto com estoque baixo no momento.',
         };
@@ -2499,7 +2542,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
       default:
         return {
           title: 'Margens abaixo do esperado',
-          description: `Produtos com margem de lucro menor que ${this.lowMarginThreshold}%.`,
+          description: `Produtos em estoque com margem de lucro menor que ${this.lowMarginThreshold}% (os sem preço de custo ficam de fora).`,
           items: this.lowMarginAlerts,
           emptyMessage: 'Nenhum produto abaixo da margem mínima definida.',
         };
@@ -2516,9 +2559,6 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     return `${formatDecimal(value, 0, 2)}%`;
   }
 
-  private compareProductNames(a: Produto, b: Produto): number {
-    return (a.nome ?? '').localeCompare(b.nome ?? '', 'pt-BR', { sensitivity: 'base' });
-  }
 
   private abrirUltimaVenda(): void {
     if (!this.loja?.id) return;

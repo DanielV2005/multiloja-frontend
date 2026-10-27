@@ -21,6 +21,40 @@ export interface Produto {
   quantidade: number;
   margemLucro: number;
   codigoBarra: string | null;
+  /** Quantidade minima para reposicao: null = usa o padrao da loja; 0 = nao monitorar. */
+  estoqueMinimo?: number | null;
+}
+
+/** Colunas do quadro de reposicao, da mais urgente para a menos urgente. */
+export type ReposicaoColuna = 'SEM_ESTOQUE' | 'CRITICO' | 'REPOR' | 'ATENCAO' | 'OK' | 'NAO_MONITORADO';
+
+export interface ReposicaoItemDto {
+  id: number;
+  nome: string;
+  codigoBarra?: string | null;
+  setorFilhoId: number;
+  quantidade: number;
+  estoqueMinimo?: number | null;
+  minimoUsado: number;
+  precoCusto: number;
+  precoVenda: number;
+  margemLucro: number;
+  vendidoNoPeriodo: number;
+  giroDiario: number;
+  diasDeEstoque?: number | null;
+  faltaParaMinimo: number;
+  cobertura: number;
+  coluna: ReposicaoColuna;
+  /** 0 a 100: 60% pelo quanto falta para o minimo + 40% pela rapidez com que vai acabar. */
+  prioridade: number;
+  parado: boolean;
+  ultimaMovimentacao?: string | null;
+}
+
+export interface ReposicaoDto {
+  diasAnalisados: number;
+  minimoPadrao: number;
+  itens: ReposicaoItemDto[];
 }
 
 /**
@@ -181,6 +215,22 @@ export class ProdutoService {
    */
   atualizar(id: number, dto: SalvarProdutoRequest): Observable<void> {
     return this.http.put<void>(`${this.api}/${id}`, dto);
+  }
+
+  /**
+   * PUT /api/Produtos/{id}/estoque-minimo
+   * (null = volta para o minimo padrao; 0 = nao monitorar)
+   */
+  definirEstoqueMinimo(id: number, estoqueMinimo: number | null): Observable<void> {
+    return this.http.put<void>(`${this.api}/${id}/estoque-minimo`, { estoqueMinimo });
+  }
+
+  /**
+   * GET /api/Produtos/reposicao
+   * Produtos ativos da loja selecionada com coluna do quadro, giro de vendas e prioridade de compra.
+   */
+  listarReposicao(dias = 30): Observable<ReposicaoDto> {
+    return this.http.get<ReposicaoDto>(`${this.api}/reposicao`, { params: { dias: String(dias) } });
   }
 
   /**

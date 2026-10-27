@@ -16,6 +16,8 @@ import {
 } from './produto-form.dialog';
 import { EstoqueMovimentoDialogComponent } from './estoque-movimento.dialog';
 import { EstoqueTransferenciaDialogComponent } from './estoque-transferencia.dialog';
+import { ReposicaoKanbanDialogComponent } from './reposicao-kanban.dialog';
+import { parseQuantidadeMinima } from './estoque-minimo';
 import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.component';
 import { formatBRL, formatDecimal } from '../../../shared/format';
 
@@ -60,6 +62,16 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
               (click)="abrirRankingSetores()"
             >
               <span class="material-symbols-outlined">visibility</span>
+            </button>
+
+            <button
+              class="btn-secondary"
+              type="button"
+              title="Quadro de reposição pelo estoque mínimo"
+              (click)="abrirReposicao()"
+            >
+              <span class="material-symbols-outlined">view_kanban</span>
+              <span>Reposição</span>
             </button>
 
             <button
@@ -113,6 +125,7 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
           <div class="table-header">
             <span class="th col-produto">Produto</span>
             <span class="th col-numero">Qtd.</span>
+            <span class="th col-min" title="Estoque mínimo para reposição. Vazio = padrão ({{ minimoPadrao }}); 0 = não monitorar.">Mín.</span>
             <span class="th col-numero">Preço custo</span>
             <span class="th col-numero">Preço venda</span>
             <span class="th col-numero">Margem</span>
@@ -132,8 +145,24 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
               </div>
             </div>
 
-            <span class="cell col-numero">
+            <span class="cell col-numero" [ngClass]="classeQuantidade(p)">
               {{ p.quantidade }}
+            </span>
+
+            <span class="cell col-min">
+              <input
+                type="text"
+                inputmode="decimal"
+                class="min-input"
+                [value]="minimoTexto(p)"
+                [placeholder]="minimoPadrao"
+                [disabled]="!p.id || salvandoMinimo.has(p.id)"
+                title="Estoque mínimo (vazio = padrão; 0 = não monitorar)"
+                (keydown.enter)="$any($event.target).blur()"
+                (keydown.escape)="cancelarMinimo(p, $event)"
+                (blur)="salvarMinimo(p, $event)"
+              />
+              <small class="min-erro" *ngIf="p.id && errosMinimo.get(p.id) as msg">{{ msg }}</small>
             </span>
 
             <span class="cell col-numero">
@@ -409,9 +438,31 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
 
   /* larguras das colunas (todas compartilham) */
   .table .col-produto{ width:20%; }
-  .table .col-numero { width:11%; }
-  .table .col-setor { width:13%; }
-  .table .col-acoes { width:12%; }
+  .table .col-numero { width:10%; }
+  .table .col-min { width:8%; text-align:right; }
+
+  .min-input{
+    width:100%;
+    max-width:80px;
+    height:28px;
+    padding:0 6px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:#060b18;
+    color:var(--text);
+    text-align:right;
+    font:inherit;
+    font-variant-numeric:tabular-nums;
+    outline:none;
+  }
+  .min-input:focus{ border-color:rgba(240,210,122,.8); }
+  .min-input::placeholder{ color:var(--muted); opacity:.7; }
+  .min-erro{ display:block; margin-top:4px; color:#fca5a5; font-size:.72rem; text-align:right; white-space:normal; }
+  /* Quantidade em relacao ao minimo */
+  .qtd-zerada{ color:#f87171; font-weight:600; }
+  .qtd-baixa{ color:#facc15; font-weight:600; }
+  .table .col-setor { width:12%; }
+  .table .col-acoes { width:14%; }
 
   /* alinhamento dos títulos */
   .table-header .col-produto,
@@ -531,6 +582,12 @@ export class EstoquePageComponent implements OnInit {
   desativandoId: number | null = null;
 
   private setoresPorId = new Map<number, string>();
+
+  // Estoque minimo editado direto na tabela (mesmo padrao do quadro de reposicao)
+  readonly minimoPadrao = 5;
+  salvandoMinimo = new Set<number>();
+  errosMinimo = new Map<number, string>();
+  private minimoCancelado = false;
 
   get setoresRank(): Array<{
     setorId: number;
@@ -681,6 +738,7 @@ export class EstoquePageComponent implements OnInit {
           precoCusto: this.toNumber(p.precoCusto),
           precoVenda: this.toNumber(p.precoVenda),
           margemLucro: this.toNumber(p.margemLucro),
+          estoqueMinimo: p.estoqueMinimo == null ? null : this.toNumber(p.estoqueMinimo),
         }));
 
         this.loading = false;
@@ -717,6 +775,71 @@ export class EstoquePageComponent implements OnInit {
   nomeSetor(p: Produto): string {
     if (!p.setorFilhoId) return '—';
     return this.setoresPorId.get(p.setorFilhoId) ?? `#${p.setorFilhoId}`;
+  }
+
+  minimoTexto(p: Produto): string {
+    return p.estoqueMinimo == null ? '' : formatDecimal(p.estoqueMinimo, 0, 3);
+  }
+
+  /** Zerado ou no minimo (vazio = padrao; minimo 0 = nao monitorado). */
+  classeQuantidade(p: Produto): string {
+    const minimo = p.estoqueMinimo ?? this.minimoPadrao;
+    if (minimo <= 0) return '';
+    if (p.quantidade <= 0) return 'qtd-zerada';
+    return p.quantidade <= minimo ? 'qtd-baixa' : '';
+  }
+
+  cancelarMinimo(p: Produto, event: Event): void {
+    this.minimoCancelado = true;
+    const input = event.target as HTMLInputElement;
+    input.value = this.minimoTexto(p);
+    input.blur();
+  }
+
+  salvarMinimo(p: Produto, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (this.minimoCancelado) {
+      this.minimoCancelado = false;
+      return;
+    }
+    if (!p.id) return;
+    const id = p.id;
+    const lido = parseQuantidadeMinima(input.value);
+    if (!lido.ok) {
+      this.errosMinimo.set(id, lido.erro);
+      return;
+    }
+    this.errosMinimo.delete(id);
+    if (lido.valor === (p.estoqueMinimo ?? null)) {
+      input.value = this.minimoTexto(p);
+      return;
+    }
+
+    this.salvandoMinimo.add(id);
+    this.produtoService.definirEstoqueMinimo(id, lido.valor).subscribe({
+      next: () => {
+        this.salvandoMinimo.delete(id);
+        const idx = this.produtos.findIndex(x => x.id === id);
+        if (idx >= 0) this.produtos[idx] = { ...this.produtos[idx], estoqueMinimo: lido.valor };
+      },
+      error: err => {
+        this.salvandoMinimo.delete(id);
+        input.value = this.minimoTexto(p);
+        this.errosMinimo.set(id, err?.status === 403 ? 'Sem permissão.' : 'Não foi possível salvar.');
+      },
+    });
+  }
+
+  abrirReposicao(): void {
+    this.dialog.open(ReposicaoKanbanDialogComponent, {
+      autoFocus: false,
+      maxWidth: '96vw',
+      panelClass: 'ml-dialog',
+    })
+    .afterClosed()
+    .subscribe((alterou?: boolean) => {
+      if (alterou) this.carregarDados();
+    });
   }
 
   editarProduto(produto: Produto): void {
