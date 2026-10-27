@@ -219,12 +219,12 @@ describe('PdvComponent', () => {
       return { sale, item };
     }
 
-    /** Operador clica no campo, digita e sai (Enter/Tab). */
-    function digitarPreco(item: any, campo: 'unit' | 'total', texto: string) {
+    /** Operador clica no total do item, digita e sai (Enter/Tab). */
+    function digitarTotal(item: any, texto: string) {
       const input = document.createElement('input');
-      c.iniciarEdicaoPreco(item, campo, { target: input } as any);
+      c.iniciarEdicaoPreco(item, { target: input } as any);
       input.value = texto;
-      c.confirmarEdicaoPreco(item, campo, { target: input } as any);
+      c.confirmarEdicaoPreco(item, { target: input } as any);
       return input;
     }
 
@@ -237,9 +237,10 @@ describe('PdvComponent', () => {
       const { item } = vendaComSandalias();
       pdv.setItemPrice.and.returnValue(of(resposta(20, 60)));
 
-      const input = digitarPreco(item, 'total', '60');
+      const input = digitarTotal(item, '60');
 
-      expect(pdv.setItemPrice).toHaveBeenCalledOnceWith(1, jasmine.objectContaining({ produtoId: 10, tipo: 'PRODUTO', lineTotal: 60, unitPrice: null }));
+      // So o total vai para o servidor; o unitario nao e editavel
+      expect(pdv.setItemPrice).toHaveBeenCalledOnceWith(1, { saleId: 1, produtoId: 10, tipo: 'PRODUTO', lineTotal: 60 });
       expect(item.unitPrice).toBe(20);
       expect(c.precoAlterado(item)).toBeTrue();
       expect(c.totalValue).toBe(60);
@@ -250,7 +251,7 @@ describe('PdvComponent', () => {
       const { item } = vendaComSandalias();
       pdv.setItemPrice.and.returnValue(of(resposta(411.52, 1234.56)));
 
-      digitarPreco(item, 'total', 'R$ 1.234,56');
+      digitarTotal(item, 'R$ 1.234,56');
 
       expect(pdv.setItemPrice.calls.mostRecent().args[1].lineTotal).toBe(1234.56);
     });
@@ -258,17 +259,16 @@ describe('PdvComponent', () => {
     it('Esc, campo vazio ou o mesmo valor nao enviam nada; texto invalido mostra erro', () => {
       const { item } = vendaComSandalias();
       const input = document.createElement('input');
-      c.iniciarEdicaoPreco(item, 'total', { target: input } as any);
+      c.iniciarEdicaoPreco(item, { target: input } as any);
       input.value = '60';
       c.cancelarEdicaoPreco({ target: input } as any);
-      c.confirmarEdicaoPreco(item, 'total', { target: input } as any);
-      digitarPreco(item, 'total', '');
-      digitarPreco(item, 'total', '75,00');
-      digitarPreco(item, 'unit', '25');
+      c.confirmarEdicaoPreco(item, { target: input } as any);
+      digitarTotal(item, '');
+      digitarTotal(item, '75,00');
       expect(pdv.setItemPrice).not.toHaveBeenCalled();
       expect(input.value).toBe('75,00');
 
-      digitarPreco(item, 'total', 'abc');
+      digitarTotal(item, 'abc');
       expect(c.priceError(item)).toContain('inv');
       expect(pdv.setItemPrice).not.toHaveBeenCalled();
     });
@@ -280,7 +280,7 @@ describe('PdvComponent', () => {
       pdv.setItemPrice.and.returnValue(of(resposta(15, 60)));
 
       c.alterarQuantidade(item, 1); // 3 -> 4, ainda indo para o servidor
-      digitarPreco(item, 'total', '60');
+      digitarTotal(item, '60');
       expect(pdv.setItemPrice).not.toHaveBeenCalled();
       expect(c.hasPendingPrices).toBeTrue();
 
@@ -296,7 +296,7 @@ describe('PdvComponent', () => {
       pdv.setItemPrice.and.returnValue(preco);
       pdv.addItem.and.returnValue(of(venda({ subtotal: 80, total: 80 })));
 
-      digitarPreco(item, 'total', '60');
+      digitarTotal(item, '60');
       c.alterarQuantidade(item, 1);
       expect(pdv.addItem).not.toHaveBeenCalled();
 
@@ -323,7 +323,7 @@ describe('PdvComponent', () => {
     it('bloqueia finalizar enquanto o valor de um item esta sendo salvo', async () => {
       const { item } = vendaComSandalias();
       pdv.setItemPrice.and.returnValue(new Subject<any>());
-      digitarPreco(item, 'total', '60');
+      digitarTotal(item, '60');
 
       await c.finalizarVenda();
 
@@ -336,7 +336,7 @@ describe('PdvComponent', () => {
       spyOn(console, 'error');
       pdv.setItemPrice.and.returnValue(throwError(() => ({ error: { message: 'Venda não está aberta.' } })));
 
-      digitarPreco(item, 'total', '60');
+      digitarTotal(item, '60');
 
       expect(c.priceError(item)).toBe('Venda não está aberta.');
       expect(item.unitPrice).toBe(25);

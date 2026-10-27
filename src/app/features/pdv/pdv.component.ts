@@ -38,12 +38,10 @@ interface DraftSale {
   createdAt: Date;
 }
 
-type CampoPreco = 'unit' | 'total';
-
+/** Novo total da linha digitado no carrinho, esperando a vez de ir para o servidor. */
 interface PrecoEnvio {
   saleId: number;
-  campo: CampoPreco;
-  valor: number;
+  total: number;
 }
 
 interface QueueEntry {
@@ -205,18 +203,7 @@ interface DraftPayload {
               <div class="qty-error" *ngIf="quantityError(item)">{{ quantityError(item) }}</div>
             </div>
             <div class="num price-cell">
-              <input
-                type="text"
-                inputmode="decimal"
-                class="price-input pdv-focus-cart"
-                title="Alterar o valor unit&#225;rio"
-                [value]="precoTexto(item, 'unit')"
-                [disabled]="!currentSale"
-                (focus)="iniciarEdicaoPreco(item, 'unit', $event)"
-                (keydown.enter)="$any($event.target).blur()"
-                (keydown.escape)="cancelarEdicaoPreco($event)"
-                (blur)="confirmarEdicaoPreco(item, 'unit', $event)"
-              />
+              <span class="price-value">{{ fmtValor(item.unitPrice) }}</span>
               <s class="price-original" *ngIf="precoAlterado(item)">{{ fmtValor(item.listUnitPrice) }}</s>
             </div>
             <div class="num price-cell">
@@ -225,12 +212,12 @@ interface DraftPayload {
                 inputmode="decimal"
                 class="price-input pdv-focus-cart"
                 title="Alterar o total do item"
-                [value]="precoTexto(item, 'total')"
+                [value]="precoTexto(item)"
                 [disabled]="!currentSale"
-                (focus)="iniciarEdicaoPreco(item, 'total', $event)"
+                (focus)="iniciarEdicaoPreco(item, $event)"
                 (keydown.enter)="$any($event.target).blur()"
                 (keydown.escape)="cancelarEdicaoPreco($event)"
-                (blur)="confirmarEdicaoPreco(item, 'total', $event)"
+                (blur)="confirmarEdicaoPreco(item, $event)"
               />
               <s class="price-original" *ngIf="precoAlterado(item)">{{ fmtValor((item.listUnitPrice ?? 0) * item.quantity) }}</s>
             </div>
@@ -764,24 +751,25 @@ interface DraftPayload {
       gap:2px;
       min-width:0;
     }
+    /* Mesma altura e recuo do campo do total, para os dois valores ficarem na mesma linha */
+    .price-value{
+      line-height:30px;
+      padding-right:6px;
+    }
+    /* So o total e editavel: o campo fica sempre visivel, como o da quantidade */
     .price-input{
       width:100%;
       height:30px;
       padding:0 5px;
       border-radius:8px;
-      border:1px solid transparent;
-      background:transparent;
+      border:1px solid var(--border);
+      background:#050814;
       color:var(--text);
       font:inherit;
       text-align:right;
       font-variant-numeric:tabular-nums;
       outline:none;
       cursor:text;
-    }
-    .price-input:hover:not(:disabled),
-    .price-input:focus{
-      border-color:var(--border);
-      background:#050814;
     }
     .price-input:disabled{ opacity:.6; cursor:default; }
     .price-original{ font-size:.72rem; color:var(--muted); }
@@ -1071,9 +1059,9 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
   private stockWarningOpen = false;
   private searchStockAlertOpen = false;
   private stockByProductId = new Map<number, number>();
-  // Preco do item editado no carrinho (unitario ou total). Divide a fila de envio com a quantidade:
+  // Total do item editado no carrinho. Divide a fila de envio com a quantidade:
   // o total digitado e dividido pela quantidade gravada no servidor.
-  private priceEditing: { key: string; campo: CampoPreco; texto: string; cancelado?: boolean } | null = null;
+  private priceEditing: { key: string; texto: string; cancelado?: boolean } | null = null;
   private priceInFlight = new Map<string, PrecoEnvio>();
   private pricePending = new Map<string, PrecoEnvio>();
   private priceErrors = new Map<string, string>();
@@ -2615,15 +2603,15 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     this.aplicarQuantidade(item, 0);
   }
 
-  // ---------- Preco do item (unitario ou total da linha), editado direto no carrinho ----------
+  // ---------- Total do item, editado direto no carrinho (o servidor recalcula o unitario) ----------
 
-  precoTexto(item: CartItem, campo: CampoPreco): string {
+  precoTexto(item: CartItem): string {
     const edicao = this.priceEditing;
-    if (edicao && edicao.key === item.key && edicao.campo === campo) return edicao.texto;
+    if (edicao && edicao.key === item.key) return edicao.texto;
     // Enquanto o servidor nao confirma, mostra o valor digitado
     const envio = this.pricePending.get(item.key) ?? this.priceInFlight.get(item.key);
-    if (envio && envio.campo === campo && envio.saleId === this.currentSale?.id) return this.fmtValor(envio.valor);
-    return this.fmtValor(this.valorDoCampo(item, campo));
+    if (envio && envio.saleId === this.currentSale?.id) return this.fmtValor(envio.total);
+    return this.fmtValor(this.totalDaLinha(item));
   }
 
   precoAlterado(item: CartItem): boolean {
@@ -2634,10 +2622,10 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     return this.priceErrors.get(item.key) ?? null;
   }
 
-  iniciarEdicaoPreco(item: CartItem, campo: CampoPreco, event: Event): void {
+  iniciarEdicaoPreco(item: CartItem, event: Event): void {
     const input = event.target as HTMLInputElement;
     this.priceErrors.delete(item.key);
-    this.priceEditing = { key: item.key, campo, texto: this.valorDoCampo(item, campo).toFixed(2).replace('.', ',') };
+    this.priceEditing = { key: item.key, texto: this.totalDaLinha(item).toFixed(2).replace('.', ',') };
     input.value = this.priceEditing.texto;
     // Seleciona depois do clique; no proprio focus o mouseup desfaz a selecao
     setTimeout(() => { if (document.activeElement === input) input.select(); });
@@ -2648,28 +2636,28 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     (event.target as HTMLInputElement).blur();
   }
 
-  confirmarEdicaoPreco(item: CartItem, campo: CampoPreco, event: Event): void {
+  confirmarEdicaoPreco(item: CartItem, event: Event): void {
     const edicao = this.priceEditing;
-    if (!edicao || edicao.key !== item.key || edicao.campo !== campo) return;
+    if (!edicao || edicao.key !== item.key) return;
     this.priceEditing = null;
     const input = event.target as HTMLInputElement;
     const digitado = input.value.trim();
     if (!edicao.cancelado && digitado && this.currentSale) {
-      this.aplicarPrecoDigitado(item, campo, digitado, this.currentSale.id);
+      this.aplicarPrecoDigitado(item, digitado, this.currentSale.id);
     }
     // Com foco e saida no mesmo quadro o Angular nao reescreve o campo: volta o texto formatado
-    input.value = this.precoTexto(item, campo);
+    input.value = this.precoTexto(item);
   }
 
-  private aplicarPrecoDigitado(item: CartItem, campo: CampoPreco, digitado: string, saleId: number): void {
+  private aplicarPrecoDigitado(item: CartItem, digitado: string, saleId: number): void {
     const valor = this.parseMoney(digitado);
     if (!Number.isFinite(valor)) {
       this.priceErrors.set(item.key, 'Valor inválido.');
       return;
     }
     const novo = Math.round(valor * 100) / 100;
-    if (Math.abs(novo - this.valorDoCampo(item, campo)) < 0.005) return;
-    this.salvarPreco({ saleId, campo, valor: novo }, item.key);
+    if (Math.abs(novo - this.totalDaLinha(item)) < 0.005) return;
+    this.salvarPreco({ saleId, total: novo }, item.key);
   }
 
   private salvarPreco(envio: PrecoEnvio, key: string): void {
@@ -2688,8 +2676,7 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
       saleId: envio.saleId,
       produtoId: linha.produtoId,
       tipo: linha.tipo,
-      unitPrice: envio.campo === 'unit' ? envio.valor : null,
-      lineTotal: envio.campo === 'total' ? envio.valor : null,
+      lineTotal: envio.total,
     }).subscribe({
       next: res => {
         this.upsertOpenSale(res.sale);
@@ -2736,8 +2723,8 @@ export class PdvComponent implements AfterViewInit, OnDestroy, OnInit {
     this.salvarPreco(pendente, key);
   }
 
-  private valorDoCampo(item: CartItem, campo: CampoPreco): number {
-    return campo === 'unit' ? item.unitPrice : item.unitPrice * item.quantity;
+  private totalDaLinha(item: CartItem): number {
+    return item.unitPrice * item.quantity;
   }
 
   // Aceita "60", "60,5", "R$ 1.234,56", "1.234" (milhar) e "60.50"
