@@ -2447,7 +2447,7 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.alertsLoading = true;
     this.alertsError = false;
     this.produtos
-      .listarReposicao(this.staleDaysThreshold)
+      .listarReposicao()
       .pipe(timeout(20000), takeUntil(this.destroy$))
       .subscribe({
         next: (dados) => {
@@ -2471,13 +2471,14 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     const porNome = (a: ReposicaoItemDto, b: ReposicaoItemDto) =>
       (a.nome ?? '').localeCompare(b.nome ?? '', 'pt-BR', { sensitivity: 'base' });
 
-    // Abaixo do minimo de cada produto (inclui os zerados), ja na ordem de prioridade do servidor
+    // Abaixo do minimo de cada produto (digitado ou automatico pelas vendas), inclui os zerados,
+    // ja na ordem de prioridade do servidor
     this.lowStockAlerts = itens
-      .filter((i) => i.coluna === 'SEM_ESTOQUE' || i.coluna === 'CRITICO' || i.coluna === 'REPOR')
+      .filter((i) => i.coluna === 'SEM_ESTOQUE' || i.coluna === 'REPOR')
       .map((i) => ({
         name: i.nome,
-        detail: `Estoque ${formatDecimal(i.quantidade, 0, 3)} · mínimo ${formatDecimal(i.minimoUsado, 0, 3)}`,
-        value: `Prioridade ${i.prioridade}`,
+        detail: `Estoque ${formatDecimal(i.quantidade, 0, 3)} · mínimo ${formatDecimal(i.minimo ?? 0, 0, 3)}`,
+        value: `Comprar ${formatDecimal(i.sugestaoCompra, 0, 3)}`,
       }));
 
     this.staleProductAlerts = itens

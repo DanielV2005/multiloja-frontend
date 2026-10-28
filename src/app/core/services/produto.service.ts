@@ -21,12 +21,22 @@ export interface Produto {
   quantidade: number;
   margemLucro: number;
   codigoBarra: string | null;
-  /** Quantidade minima para reposicao: null = usa o padrao da loja; 0 = nao monitorar. */
+  /** Estoque minimo digitado: null = automatico pelas vendas; 0 = nao acompanhar. */
   estoqueMinimo?: number | null;
 }
 
 /** Colunas do quadro de reposicao, da mais urgente para a menos urgente. */
-export type ReposicaoColuna = 'SEM_ESTOQUE' | 'CRITICO' | 'REPOR' | 'ATENCAO' | 'OK' | 'NAO_MONITORADO';
+export type ReposicaoColuna =
+  | 'SEM_ESTOQUE'
+  | 'REPOR'
+  | 'ATENCAO'
+  | 'OK'
+  | 'EXCESSO'
+  | 'SEM_HISTORICO'
+  | 'NAO_MONITORADO';
+
+/** De onde saiu o ritmo de vendas: ultimo mes + 3 meses, so 3 meses ou 6 meses (vende pouco). */
+export type ReposicaoBaseGiro = 'RECENTE' | 'TRIMESTRE' | 'SEMESTRE';
 
 export interface ReposicaoItemDto {
   id: number;
@@ -34,26 +44,41 @@ export interface ReposicaoItemDto {
   codigoBarra?: string | null;
   setorFilhoId: number;
   quantidade: number;
+  /** Digitado pelo usuario (null = automatico). */
   estoqueMinimo?: number | null;
-  minimoUsado: number;
+  /** Pelas vendas (null = sem vendas para calcular). */
+  minimoAutomatico?: number | null;
+  /** O que vale: digitado ou automatico (null = sem historico ou nao acompanhado). */
+  minimo?: number | null;
+  meio?: number | null;
+  maximo?: number | null;
   precoCusto: number;
   precoVenda: number;
   margemLucro: number;
-  vendidoNoPeriodo: number;
-  giroDiario: number;
+  /** null = sem vendas em 6 meses. */
+  giroDiario?: number | null;
+  baseGiro?: ReposicaoBaseGiro | null;
+  /** Dias zerado no periodo usado (nao entram na media). */
+  diasSemEstoque: number;
   diasDeEstoque?: number | null;
-  faltaParaMinimo: number;
-  cobertura: number;
+  diasAteMinimo?: number | null;
+  /** Quanto comprar para chegar no maximo. */
+  sugestaoCompra: number;
+  /** Quanto passa do maximo. */
+  excedente: number;
   coluna: ReposicaoColuna;
   /** 0 a 100: 60% pelo quanto falta para o minimo + 40% pela rapidez com que vai acabar. */
   prioridade: number;
   parado: boolean;
   ultimaMovimentacao?: string | null;
+  ultimaCompra?: string | null;
 }
 
 export interface ReposicaoDto {
-  diasAnalisados: number;
-  minimoPadrao: number;
+  /** Minimo, meio e maximo automaticos, em dias de venda (7, 14 e 28). */
+  diasMinimo: number;
+  diasMeio: number;
+  diasMaximo: number;
   itens: ReposicaoItemDto[];
 }
 
@@ -219,7 +244,7 @@ export class ProdutoService {
 
   /**
    * PUT /api/Produtos/{id}/estoque-minimo
-   * (null = volta para o minimo padrao; 0 = nao monitorar)
+   * (null = volta para o minimo automatico; 0 = nao acompanhar)
    */
   definirEstoqueMinimo(id: number, estoqueMinimo: number | null): Observable<void> {
     return this.http.put<void>(`${this.api}/${id}/estoque-minimo`, { estoqueMinimo });
@@ -227,10 +252,10 @@ export class ProdutoService {
 
   /**
    * GET /api/Produtos/reposicao
-   * Produtos ativos da loja selecionada com coluna do quadro, giro de vendas e prioridade de compra.
+   * Produtos ativos da loja selecionada com minimo/meio/maximo, coluna do quadro, giro de vendas e prioridade.
    */
-  listarReposicao(dias = 30): Observable<ReposicaoDto> {
-    return this.http.get<ReposicaoDto>(`${this.api}/reposicao`, { params: { dias: String(dias) } });
+  listarReposicao(): Observable<ReposicaoDto> {
+    return this.http.get<ReposicaoDto>(`${this.api}/reposicao`);
   }
 
   /**

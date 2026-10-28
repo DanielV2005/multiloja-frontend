@@ -3,11 +3,12 @@ import { Component, HostListener, Inject, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 
 import { PdvService } from '../../../core/services/pdv.service';
-import { ProdutoService, Produto } from '../../../core/services/produto.service';
+import { ProdutoService, Produto, ReposicaoDto, ReposicaoItemDto } from '../../../core/services/produto.service';
 import { SetorService } from '../../../core/services/setor.service';
 import { UsuarioService, Loja } from '../../../core/services/usuario.service';
 import {
@@ -17,7 +18,13 @@ import {
 import { EstoqueMovimentoDialogComponent } from './estoque-movimento.dialog';
 import { EstoqueTransferenciaDialogComponent } from './estoque-transferencia.dialog';
 import { ReposicaoKanbanDialogComponent } from './reposicao-kanban.dialog';
-import { parseQuantidadeMinima } from './estoque-minimo';
+import {
+  dicaMinimo,
+  parseQuantidadeMinima,
+  placeholderMinimo,
+  textoDuracao,
+  textoRitmo,
+} from './estoque-minimo';
 import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.component';
 import { formatBRL, formatDecimal } from '../../../shared/format';
 
@@ -125,7 +132,7 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
           <div class="table-header">
             <span class="th col-produto">Produto</span>
             <span class="th col-numero">Qtd.</span>
-            <span class="th col-min" title="Estoque mínimo para reposição. Vazio = padrão ({{ minimoPadrao }}); 0 = não monitorar.">Mín.</span>
+            <span class="th col-min" title="Estoque mínimo. Em branco = automático pelas vendas (1 semana de venda, em cinza); digite para fixar outro; 0 = não acompanhar.">Mín.</span>
             <span class="th col-numero">Preço custo</span>
             <span class="th col-numero">Preço venda</span>
             <span class="th col-numero">Margem</span>
@@ -145,7 +152,7 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
               </div>
             </div>
 
-            <span class="cell col-numero" [ngClass]="classeQuantidade(p)">
+            <span class="cell col-numero" [ngClass]="classeQuantidade(p)" [title]="tituloQuantidade(p)">
               {{ p.quantidade }}
             </span>
 
@@ -155,9 +162,9 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
                 inputmode="decimal"
                 class="min-input"
                 [value]="minimoTexto(p)"
-                [placeholder]="minimoPadrao"
+                [placeholder]="placeholderMinimo(p)"
                 [disabled]="!p.id || salvandoMinimo.has(p.id)"
-                title="Estoque mínimo (vazio = padrão; 0 = não monitorar)"
+                [title]="dicaMinimo(p)"
                 (keydown.enter)="$any($event.target).blur()"
                 (keydown.escape)="cancelarMinimo(p, $event)"
                 (blur)="salvarMinimo(p, $event)"
@@ -456,11 +463,13 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
     outline:none;
   }
   .min-input:focus{ border-color:rgba(240,210,122,.8); }
-  .min-input::placeholder{ color:var(--muted); opacity:.7; }
+  /* Vazio mostra o minimo automatico, em cinza */
+  .min-input::placeholder{ color:var(--muted); opacity:.85; font-style:italic; }
   .min-erro{ display:block; margin-top:4px; color:#fca5a5; font-size:.72rem; text-align:right; white-space:normal; }
-  /* Quantidade em relacao ao minimo */
+  /* Quantidade pela coluna do quadro de reposicao (mesmas cores) */
   .qtd-zerada{ color:#f87171; font-weight:600; }
-  .qtd-baixa{ color:#facc15; font-weight:600; }
+  .qtd-repor{ color:#fb923c; font-weight:600; }
+  .qtd-atencao{ color:#facc15; font-weight:600; }
   .table .col-setor { width:12%; }
   .table .col-acoes { width:14%; }
 
@@ -583,8 +592,9 @@ export class EstoquePageComponent implements OnInit {
 
   private setoresPorId = new Map<number, string>();
 
-  // Estoque minimo editado direto na tabela (mesmo padrao do quadro de reposicao)
-  readonly minimoPadrao = 5;
+  // Estoque minimo editado direto na tabela (mesmo padrao do quadro de reposicao).
+  // O automatico, a coluna e o ritmo de vendas de cada produto vem do quadro de reposicao.
+  private reposicaoPorId = new Map<number, ReposicaoItemDto>();
   salvandoMinimo = new Set<number>();
   errosMinimo = new Map<number, string>();
   private minimoCancelado = false;
@@ -723,9 +733,12 @@ export class EstoquePageComponent implements OnInit {
       loja: this.usuarioService.loja(this.lojaId),
       setores: this.setorService.listar(),
       produtos: this.produtoService.listar(),
+      // Sem o quadro a tabela ainda abre: so fica sem o minimo automatico e sem as cores
+      reposicao: this.produtoService.listarReposicao().pipe(catchError(() => of(null))),
     }).subscribe({
-      next: ({ loja, setores, produtos }) => {
+      next: ({ loja, setores, produtos, reposicao }) => {
         this.loja = loja ?? null;
+        this.aplicarReposicao(reposicao);
 
         this.setoresPorId.clear();
         for (const s of setores ?? []) {
@@ -781,12 +794,49 @@ export class EstoquePageComponent implements OnInit {
     return p.estoqueMinimo == null ? '' : formatDecimal(p.estoqueMinimo, 0, 3);
   }
 
-  /** Zerado ou no minimo (vazio = padrao; minimo 0 = nao monitorado). */
+  placeholderMinimo(p: Produto): string {
+    return placeholderMinimo(this.reposicaoDe(p));
+  }
+
+  dicaMinimo(p: Produto): string {
+    return dicaMinimo(this.reposicaoDe(p));
+  }
+
+  /**
+   * Mesma cor da coluna do quadro de reposicao: repor ou atencao.
+   * Zerado fica vermelho mesmo sem vendas para calcular o minimo (so o "nao acompanhar" fica sem cor).
+   */
   classeQuantidade(p: Produto): string {
-    const minimo = p.estoqueMinimo ?? this.minimoPadrao;
-    if (minimo <= 0) return '';
+    if (p.estoqueMinimo === 0) return '';
     if (p.quantidade <= 0) return 'qtd-zerada';
-    return p.quantidade <= minimo ? 'qtd-baixa' : '';
+    switch (this.reposicaoDe(p)?.coluna) {
+      case 'REPOR': return 'qtd-repor';
+      case 'ATENCAO': return 'qtd-atencao';
+      default: return '';
+    }
+  }
+
+  tituloQuantidade(p: Produto): string {
+    const item = this.reposicaoDe(p);
+    if (!item?.giroDiario) return '';
+    const vende = `Vende ${textoRitmo(item.giroDiario)}`;
+    if (item.quantidade <= 0) return `${vende} · acabou`;
+    return item.diasDeEstoque != null ? `${vende} · dura ${textoDuracao(item.diasDeEstoque)}` : vende;
+  }
+
+  private reposicaoDe(p: Produto): ReposicaoItemDto | undefined {
+    return p.id ? this.reposicaoPorId.get(p.id) : undefined;
+  }
+
+  private aplicarReposicao(dados: ReposicaoDto | null): void {
+    this.reposicaoPorId = new Map((dados?.itens ?? []).map(i => [i.id, i] as [number, ReposicaoItemDto]));
+  }
+
+  /** Depois de mudar minimo ou quantidade: a coluna e o automatico podem ter mudado. */
+  private recarregarReposicao(): void {
+    this.produtoService.listarReposicao().pipe(catchError(() => of(null))).subscribe(dados => {
+      if (dados) this.aplicarReposicao(dados);
+    });
   }
 
   cancelarMinimo(p: Produto, event: Event): void {
@@ -821,6 +871,7 @@ export class EstoquePageComponent implements OnInit {
         this.salvandoMinimo.delete(id);
         const idx = this.produtos.findIndex(x => x.id === id);
         if (idx >= 0) this.produtos[idx] = { ...this.produtos[idx], estoqueMinimo: lido.valor };
+        this.recarregarReposicao();
       },
       error: err => {
         this.salvandoMinimo.delete(id);
@@ -882,6 +933,7 @@ export class EstoquePageComponent implements OnInit {
           quantidade: res.novaQuantidade,
         };
       }
+      this.recarregarReposicao();
     });
   }
 
