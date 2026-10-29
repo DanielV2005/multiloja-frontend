@@ -21,8 +21,8 @@ export interface Produto {
   quantidade: number;
   margemLucro: number;
   codigoBarra: string | null;
-  /** Estoque minimo digitado: null = automatico pelas vendas; 0 = nao acompanhar. */
-  estoqueMinimo?: number | null;
+  /** Estoque maximo digitado (minimo = 1/4, meio = 1/2): null = automatico pelas vendas; 0 = nao acompanhar. */
+  estoqueMaximo?: number | null;
 }
 
 /** Colunas do quadro de reposicao, da mais urgente para a menos urgente. */
@@ -35,8 +35,11 @@ export type ReposicaoColuna =
   | 'SEM_HISTORICO'
   | 'NAO_MONITORADO';
 
-/** De onde saiu o ritmo de vendas: ultimo mes + 3 meses, so 3 meses ou 6 meses (vende pouco). */
-export type ReposicaoBaseGiro = 'RECENTE' | 'TRIMESTRE' | 'SEMESTRE';
+/** De onde saiu o ritmo de vendas: media de 3 meses, ou de 6 meses quando vendeu menos de 3 nos ultimos 3. */
+export type ReposicaoBaseGiro = 'TRIMESTRE' | 'SEMESTRE';
+
+/** Mudanca brusca nas vendas das 2 ultimas semanas: em alta (dobro ou mais) ou em queda (um terco ou menos). */
+export type TendenciaVendas = 'ALTA' | 'QUEDA';
 
 export interface ReposicaoItemDto {
   id: number;
@@ -45,12 +48,13 @@ export interface ReposicaoItemDto {
   setorFilhoId: number;
   quantidade: number;
   /** Digitado pelo usuario (null = automatico). */
-  estoqueMinimo?: number | null;
+  estoqueMaximo?: number | null;
   /** Pelas vendas (null = sem vendas para calcular). */
-  minimoAutomatico?: number | null;
-  /** O que vale: digitado ou automatico (null = sem historico ou nao acompanhado). */
+  maximoAutomatico?: number | null;
+  /** null = sem historico ou nao acompanhado. */
   minimo?: number | null;
   meio?: number | null;
+  /** O que vale: digitado ou automatico. */
   maximo?: number | null;
   precoCusto: number;
   precoVenda: number;
@@ -69,9 +73,25 @@ export interface ReposicaoItemDto {
   coluna: ReposicaoColuna;
   /** 0 a 100: 60% pelo quanto falta para o minimo + 40% pela rapidez com que vai acabar. */
   prioridade: number;
-  parado: boolean;
   ultimaMovimentacao?: string | null;
   ultimaCompra?: string | null;
+  ultimaVenda?: string | null;
+  /** Dias com estoque desde a ultima venda (ou desde que o produto existe), ate 180; null = nao da para saber. */
+  diasSemVender?: number | null;
+  /** Com estoque e `diasEncalhado` dias ou mais sem vender. */
+  encalhado: boolean;
+  /** Dias sem estoque nos ultimos `diasVendaPerdida` dias. */
+  diasZeradoRecente: number;
+  /** Estimativa do que deixou de vender nesses dias (unidades e R$ pelo preco de venda). */
+  vendaPerdida: number;
+  valorVendaPerdida: number;
+  /** Vendido (menos devolucoes) nos ultimos `diasTendencia` dias e quantos deles o produto teve estoque. */
+  vendidoRecente: number;
+  diasComEstoqueRecente: number;
+  /** Por dia nesses dias e nos 3 meses antes deles, so nos dias com estoque (null = pouco tempo para comparar). */
+  giroRecente: number;
+  giroAnterior?: number | null;
+  tendencia?: TendenciaVendas | null;
 }
 
 export interface ReposicaoDto {
@@ -79,7 +99,51 @@ export interface ReposicaoDto {
   diasMinimo: number;
   diasMeio: number;
   diasMaximo: number;
+  /** Janela da venda perdida (30) e dias sem vender para ser encalhado (60). */
+  diasVendaPerdida: number;
+  diasEncalhado: number;
+  /** Dias recentes comparados com os 3 meses antes deles na mudanca brusca (14). */
+  diasTendencia: number;
   itens: ReposicaoItemDto[];
+}
+
+export interface AjusteSaidaDto {
+  data: string;
+  quantidade: number;
+  saldoAnterior: number;
+  saldoPosterior: number;
+  /** Logo depois de uma entrada do mesmo produto: correcao, nao conta nas somas nem nos alertas. */
+  correcaoDeEntrada: boolean;
+}
+
+export interface AjustesProdutoDto {
+  produtoId: number;
+  nome: string;
+  codigoBarra?: string | null;
+  setorId: number;
+  ativo: boolean;
+  precoCusto: number;
+  quantidade: number;
+  /** Quantidade x preco de custo. */
+  valor: number;
+  /** Dias diferentes com saida por ajuste. */
+  dias: number;
+  grande: boolean;
+  repetido: boolean;
+  /** Grande ou repetido. */
+  conferir: boolean;
+  /** Do mais recente para o mais antigo. */
+  ajustes: AjusteSaidaDto[];
+}
+
+export interface AjustesSaidaDto {
+  dias: number;
+  /** A partir de quanto, pelo custo, uma saida e grande. */
+  valorGrande: number;
+  quantidade: number;
+  valor: number;
+  /** Os para conferir primeiro, depois pelo valor. */
+  produtos: AjustesProdutoDto[];
 }
 
 /**
@@ -243,11 +307,11 @@ export class ProdutoService {
   }
 
   /**
-   * PUT /api/Produtos/{id}/estoque-minimo
-   * (null = volta para o minimo automatico; 0 = nao acompanhar)
+   * PUT /api/Produtos/{id}/estoque-maximo
+   * (null = volta para o maximo automatico; 0 = nao acompanhar)
    */
-  definirEstoqueMinimo(id: number, estoqueMinimo: number | null): Observable<void> {
-    return this.http.put<void>(`${this.api}/${id}/estoque-minimo`, { estoqueMinimo });
+  definirEstoqueMaximo(id: number, estoqueMaximo: number | null): Observable<void> {
+    return this.http.put<void>(`${this.api}/${id}/estoque-maximo`, { estoqueMaximo });
   }
 
   /**
@@ -304,6 +368,16 @@ export class ProdutoService {
           return { items, total };
         })
       );
+  }
+
+  /**
+   * GET /api/estoque/movimentos/ajustes-saida?dias=90
+   * Saidas por ajuste do periodo, com as que merecem conferencia (grandes ou repetidas) primeiro.
+   */
+  listarAjustesSaida(dias?: number): Observable<AjustesSaidaDto> {
+    let params = new HttpParams();
+    if (dias) params = params.set('dias', String(dias));
+    return this.http.get<AjustesSaidaDto>(`${this.estoqueMovimentosApi}/ajustes-saida`, { params });
   }
 
   transferirEstoque(dto: TransferenciaEstoqueRequest): Observable<void> {

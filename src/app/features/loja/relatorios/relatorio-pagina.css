@@ -1,0 +1,164 @@
+/* Base das paginas de relatorio (mais vendidos, lista de compra): topo, cartao, filtros e tabela. */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.page {
+  min-height: 100dvh;
+  padding: 20px 18px 96px;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.topbar { display: flex; align-items: center; gap: 16px; margin: 4px 0 16px; flex-wrap: wrap; }
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid #d4af37;
+  color: var(--text);
+  border-radius: 999px;
+  height: 36px;
+  padding: 0 12px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.link:hover { background: rgba(240, 210, 122, .10); box-shadow: 0 0 14px rgba(240, 210, 122, .45); }
+.title h2 { margin: 0; font-size: 1.4rem; }
+.title .muted { font-size: .85rem; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+}
+.card__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.card__header h3 { margin: 0; font-size: 1.1rem; }
+.card__header p { margin: 4px 0 0; font-size: .86rem; line-height: 1.45; max-width: 760px; }
+
+.linha-filtros { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: .85rem;
+  cursor: pointer;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.chip:hover { border-color: rgba(240, 210, 122, .7); }
+.chip.ativo { background: rgba(218, 171, 31, .18); border-color: #d4af37; color: var(--text); font-weight: 600; }
+.chip:disabled { opacity: .5; cursor: default; }
+.rotulo { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-right: 2px; }
+
+.busca, .campo, select.campo {
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 10px;
+  outline: none;
+  font: inherit;
+  font-size: .9rem;
+}
+.busca { flex: 1 1 240px; min-width: 0; }
+.busca:focus, .campo:focus { border-color: rgba(240, 210, 122, .8); }
+
+.btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #d4af37;
+  background: transparent;
+  color: var(--text);
+  font-size: .88rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.btn:hover { background: rgba(240, 210, 122, .12); }
+.btn:disabled { opacity: .5; cursor: default; background: transparent; }
+.btn--principal { background: linear-gradient(180deg, #f5df7b 0%, #e3bd43 55%, #be8e1a 100%); color: #141414; border-color: #9e7b14; font-weight: 600; }
+.btn--principal:hover { background: linear-gradient(180deg, #f8e690 0%, #e8c552 55%, #c99a22 100%); }
+.btn .material-symbols-outlined { font-size: 18px; }
+
+.estado { padding: 18px 4px; color: var(--muted); display: flex; gap: 12px; align-items: center; margin: 0; }
+.estado.erro { color: #f87171; }
+
+.tabela-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: auto; max-height: 64vh; }
+.tabela { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.tabela th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--border);
+  font-size: .74rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 9px 10px;
+  white-space: nowrap;
+}
+.tabela td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.tabela tbody tr:hover td { background: rgba(148, 163, 184, .07); }
+.tabela .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tabela .centro { text-align: center; }
+.tabela .nome { font-weight: 500; word-break: break-word; }
+.tabela small { display: block; font-size: .76rem; }
+th.ordenavel { cursor: pointer; user-select: none; }
+th.ordenavel:hover, th.ordenavel.ativo { color: var(--text); }
+
+/* Curva ABC: A em dourado (o que mais fatura), B neutro, C apagado */
+.abc {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: .8rem;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.abc[data-classe="A"] { background: rgba(218, 171, 31, .2); border-color: #d4af37; color: #b8860b; }
+.abc[data-classe="B"] { color: var(--text); }
+:host-context(body.theme-dark) .abc[data-classe="A"] { color: #f8e28a; }
+
+/* Mudanca brusca nas vendas: em alta verde, em queda ambar */
+.tendencia[data-tendencia="ALTA"] { color: #15803d; }
+.tendencia[data-tendencia="QUEDA"] { color: #b45309; }
+:host-context(body.theme-dark) .tendencia[data-tendencia="ALTA"] { color: #4ade80; }
+:host-context(body.theme-dark) .tendencia[data-tendencia="QUEDA"] { color: #fbbf24; }
+
+/* Situacao do estoque (mesmas cores do quadro de reposicao) */
+.situacao { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.situacao::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--cor, transparent); flex: none; }
+[data-coluna="SEM_ESTOQUE"] { --cor: #ef4444; }
+[data-coluna="REPOR"] { --cor: #f97316; }
+[data-coluna="ATENCAO"] { --cor: #eab308; }
+[data-coluna="OK"] { --cor: #22c55e; }
+[data-coluna="EXCESSO"] { --cor: #a78bfa; }
+
+@media (max-width: 640px) {
+  .page { padding: 14px 12px 110px; }
+  .card { padding: 12px; }
+  .tabela { font-size: .84rem; }
+}

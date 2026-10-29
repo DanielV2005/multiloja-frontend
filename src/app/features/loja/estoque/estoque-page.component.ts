@@ -19,12 +19,12 @@ import { EstoqueMovimentoDialogComponent } from './estoque-movimento.dialog';
 import { EstoqueTransferenciaDialogComponent } from './estoque-transferencia.dialog';
 import { ReposicaoKanbanDialogComponent } from './reposicao-kanban.dialog';
 import {
-  dicaMinimo,
-  parseQuantidadeMinima,
-  placeholderMinimo,
+  dicaMaximo,
+  parseQuantidadeMaxima,
+  placeholderMaximo,
   textoDuracao,
   textoRitmo,
-} from './estoque-minimo';
+} from './estoque-maximo';
 import { VendaDetalhesDialogComponent } from '../relatorios/vendas-page.component';
 import { formatBRL, formatDecimal } from '../../../shared/format';
 
@@ -132,7 +132,7 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
           <div class="table-header">
             <span class="th col-produto">Produto</span>
             <span class="th col-numero">Qtd.</span>
-            <span class="th col-min" title="Estoque mínimo. Em branco = automático pelas vendas (1 semana de venda, em cinza); digite para fixar outro; 0 = não acompanhar.">Mín.</span>
+            <span class="th col-max" title="Estoque máximo. Em branco = automático pelas vendas (4 semanas de venda, em cinza); digite para fixar outro (o mínimo vira 1/4 e o meio, a metade); 0 = não acompanhar.">Máx.</span>
             <span class="th col-numero">Preço custo</span>
             <span class="th col-numero">Preço venda</span>
             <span class="th col-numero">Margem</span>
@@ -156,20 +156,20 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
               {{ p.quantidade }}
             </span>
 
-            <span class="cell col-min">
+            <span class="cell col-max">
               <input
                 type="text"
                 inputmode="decimal"
-                class="min-input"
-                [value]="minimoTexto(p)"
-                [placeholder]="placeholderMinimo(p)"
-                [disabled]="!p.id || salvandoMinimo.has(p.id)"
-                [title]="dicaMinimo(p)"
+                class="max-input"
+                [value]="maximoTexto(p)"
+                [placeholder]="placeholderMaximo(p)"
+                [disabled]="!p.id || salvandoMaximo.has(p.id)"
+                [title]="dicaMaximo(p)"
                 (keydown.enter)="$any($event.target).blur()"
-                (keydown.escape)="cancelarMinimo(p, $event)"
-                (blur)="salvarMinimo(p, $event)"
+                (keydown.escape)="cancelarMaximo(p, $event)"
+                (blur)="salvarMaximo(p, $event)"
               />
-              <small class="min-erro" *ngIf="p.id && errosMinimo.get(p.id) as msg">{{ msg }}</small>
+              <small class="max-erro" *ngIf="p.id && errosMaximo.get(p.id) as msg">{{ msg }}</small>
             </span>
 
             <span class="cell col-numero">
@@ -446,9 +446,9 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
   /* larguras das colunas (todas compartilham) */
   .table .col-produto{ width:20%; }
   .table .col-numero { width:10%; }
-  .table .col-min { width:8%; text-align:right; }
+  .table .col-max { width:8%; text-align:right; }
 
-  .min-input{
+  .max-input{
     width:100%;
     max-width:80px;
     height:28px;
@@ -462,10 +462,10 @@ import { formatBRL, formatDecimal } from '../../../shared/format';
     font-variant-numeric:tabular-nums;
     outline:none;
   }
-  .min-input:focus{ border-color:rgba(240,210,122,.8); }
-  /* Vazio mostra o minimo automatico, em cinza */
-  .min-input::placeholder{ color:var(--muted); opacity:.85; font-style:italic; }
-  .min-erro{ display:block; margin-top:4px; color:#fca5a5; font-size:.72rem; text-align:right; white-space:normal; }
+  .max-input:focus{ border-color:rgba(240,210,122,.8); }
+  /* Vazio mostra o maximo automatico, em cinza */
+  .max-input::placeholder{ color:var(--muted); opacity:.85; font-style:italic; }
+  .max-erro{ display:block; margin-top:4px; color:#fca5a5; font-size:.72rem; text-align:right; white-space:normal; }
   /* Quantidade pela coluna do quadro de reposicao (mesmas cores) */
   .qtd-zerada{ color:#f87171; font-weight:600; }
   .qtd-repor{ color:#fb923c; font-weight:600; }
@@ -592,12 +592,12 @@ export class EstoquePageComponent implements OnInit {
 
   private setoresPorId = new Map<number, string>();
 
-  // Estoque minimo editado direto na tabela (mesmo padrao do quadro de reposicao).
+  // Estoque maximo editado direto na tabela (mesmo padrao do quadro de reposicao).
   // O automatico, a coluna e o ritmo de vendas de cada produto vem do quadro de reposicao.
   private reposicaoPorId = new Map<number, ReposicaoItemDto>();
-  salvandoMinimo = new Set<number>();
-  errosMinimo = new Map<number, string>();
-  private minimoCancelado = false;
+  salvandoMaximo = new Set<number>();
+  errosMaximo = new Map<number, string>();
+  private maximoCancelado = false;
 
   get setoresRank(): Array<{
     setorId: number;
@@ -733,7 +733,7 @@ export class EstoquePageComponent implements OnInit {
       loja: this.usuarioService.loja(this.lojaId),
       setores: this.setorService.listar(),
       produtos: this.produtoService.listar(),
-      // Sem o quadro a tabela ainda abre: so fica sem o minimo automatico e sem as cores
+      // Sem o quadro a tabela ainda abre: so fica sem o maximo automatico e sem as cores
       reposicao: this.produtoService.listarReposicao().pipe(catchError(() => of(null))),
     }).subscribe({
       next: ({ loja, setores, produtos, reposicao }) => {
@@ -751,7 +751,7 @@ export class EstoquePageComponent implements OnInit {
           precoCusto: this.toNumber(p.precoCusto),
           precoVenda: this.toNumber(p.precoVenda),
           margemLucro: this.toNumber(p.margemLucro),
-          estoqueMinimo: p.estoqueMinimo == null ? null : this.toNumber(p.estoqueMinimo),
+          estoqueMaximo: p.estoqueMaximo == null ? null : this.toNumber(p.estoqueMaximo),
         }));
 
         this.loading = false;
@@ -790,16 +790,16 @@ export class EstoquePageComponent implements OnInit {
     return this.setoresPorId.get(p.setorFilhoId) ?? `#${p.setorFilhoId}`;
   }
 
-  minimoTexto(p: Produto): string {
-    return p.estoqueMinimo == null ? '' : formatDecimal(p.estoqueMinimo, 0, 3);
+  maximoTexto(p: Produto): string {
+    return p.estoqueMaximo == null ? '' : formatDecimal(p.estoqueMaximo, 0, 3);
   }
 
-  placeholderMinimo(p: Produto): string {
-    return placeholderMinimo(this.reposicaoDe(p));
+  placeholderMaximo(p: Produto): string {
+    return placeholderMaximo(this.reposicaoDe(p));
   }
 
-  dicaMinimo(p: Produto): string {
-    return dicaMinimo(this.reposicaoDe(p));
+  dicaMaximo(p: Produto): string {
+    return dicaMaximo(this.reposicaoDe(p));
   }
 
   /**
@@ -807,7 +807,7 @@ export class EstoquePageComponent implements OnInit {
    * Zerado fica vermelho mesmo sem vendas para calcular o minimo (so o "nao acompanhar" fica sem cor).
    */
   classeQuantidade(p: Produto): string {
-    if (p.estoqueMinimo === 0) return '';
+    if (p.estoqueMaximo === 0) return '';
     if (p.quantidade <= 0) return 'qtd-zerada';
     switch (this.reposicaoDe(p)?.coluna) {
       case 'REPOR': return 'qtd-repor';
@@ -832,51 +832,51 @@ export class EstoquePageComponent implements OnInit {
     this.reposicaoPorId = new Map((dados?.itens ?? []).map(i => [i.id, i] as [number, ReposicaoItemDto]));
   }
 
-  /** Depois de mudar minimo ou quantidade: a coluna e o automatico podem ter mudado. */
+  /** Depois de mudar maximo ou quantidade: a coluna e o automatico podem ter mudado. */
   private recarregarReposicao(): void {
     this.produtoService.listarReposicao().pipe(catchError(() => of(null))).subscribe(dados => {
       if (dados) this.aplicarReposicao(dados);
     });
   }
 
-  cancelarMinimo(p: Produto, event: Event): void {
-    this.minimoCancelado = true;
+  cancelarMaximo(p: Produto, event: Event): void {
+    this.maximoCancelado = true;
     const input = event.target as HTMLInputElement;
-    input.value = this.minimoTexto(p);
+    input.value = this.maximoTexto(p);
     input.blur();
   }
 
-  salvarMinimo(p: Produto, event: Event): void {
+  salvarMaximo(p: Produto, event: Event): void {
     const input = event.target as HTMLInputElement;
-    if (this.minimoCancelado) {
-      this.minimoCancelado = false;
+    if (this.maximoCancelado) {
+      this.maximoCancelado = false;
       return;
     }
     if (!p.id) return;
     const id = p.id;
-    const lido = parseQuantidadeMinima(input.value);
+    const lido = parseQuantidadeMaxima(input.value);
     if (!lido.ok) {
-      this.errosMinimo.set(id, lido.erro);
+      this.errosMaximo.set(id, lido.erro);
       return;
     }
-    this.errosMinimo.delete(id);
-    if (lido.valor === (p.estoqueMinimo ?? null)) {
-      input.value = this.minimoTexto(p);
+    this.errosMaximo.delete(id);
+    if (lido.valor === (p.estoqueMaximo ?? null)) {
+      input.value = this.maximoTexto(p);
       return;
     }
 
-    this.salvandoMinimo.add(id);
-    this.produtoService.definirEstoqueMinimo(id, lido.valor).subscribe({
+    this.salvandoMaximo.add(id);
+    this.produtoService.definirEstoqueMaximo(id, lido.valor).subscribe({
       next: () => {
-        this.salvandoMinimo.delete(id);
+        this.salvandoMaximo.delete(id);
         const idx = this.produtos.findIndex(x => x.id === id);
-        if (idx >= 0) this.produtos[idx] = { ...this.produtos[idx], estoqueMinimo: lido.valor };
+        if (idx >= 0) this.produtos[idx] = { ...this.produtos[idx], estoqueMaximo: lido.valor };
         this.recarregarReposicao();
       },
       error: err => {
-        this.salvandoMinimo.delete(id);
-        input.value = this.minimoTexto(p);
-        this.errosMinimo.set(id, err?.status === 403 ? 'Sem permissão.' : 'Não foi possível salvar.');
+        this.salvandoMaximo.delete(id);
+        input.value = this.maximoTexto(p);
+        this.errosMaximo.set(id, err?.status === 403 ? 'Sem permissão.' : 'Não foi possível salvar.');
       },
     });
   }

@@ -94,6 +94,18 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/loja/relatorios/vendas-page.component').then(m => m.VendasPageComponent),
   },
+  {
+    path: 'loja/:id/relatorios/mais-vendidos',
+    canActivate: [authGuard, lojaGuard],
+    loadComponent: () =>
+      import('./features/loja/relatorios/mais-vendidos-page.component').then(m => m.MaisVendidosPageComponent),
+  },
+  {
+    path: 'loja/:id/relatorios/lista-de-compra',
+    canActivate: [authGuard, lojaGuard],
+    loadComponent: () =>
+      import('./features/loja/relatorios/lista-compra-page.component').then(m => m.ListaCompraPageComponent),
+  },
 
   { path: '', pathMatch: 'full', redirectTo: 'login' },
   { path: '**', redirectTo: 'login' },

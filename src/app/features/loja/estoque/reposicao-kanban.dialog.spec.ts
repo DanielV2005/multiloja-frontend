@@ -1,44 +1,50 @@
 import { TestBed } from '@angular/core/testing';
 import { MatDialogRef } from '@angular/material/dialog';
+import { Router } from '@angular/router';
 import { Subject, of, throwError } from 'rxjs';
 import { ReposicaoKanbanDialogComponent } from './reposicao-kanban.dialog';
+import { CurvaAbcService } from '../../../core/services/curva-abc.service';
+import { AuthStorageService } from '../../../core/services/auth-storage.service';
+import { ClasseAbc } from '../../../shared/curva-abc';
 import {
-  dicaMinimo,
-  parseQuantidadeMinima,
-  placeholderMinimo,
+  dicaMaximo,
+  parseQuantidadeMaxima,
+  placeholderMaximo,
   textoBaseGiro,
   textoDuracao,
   textoHaQuanto,
   textoRitmo,
-} from './estoque-minimo';
+} from './estoque-maximo';
 import { ProdutoService, ReposicaoDto, ReposicaoItemDto } from '../../../core/services/produto.service';
 
 const item = (over: Partial<ReposicaoItemDto>): ReposicaoItemDto => ({
-  id: 1, nome: 'Produto', setorFilhoId: 1, quantidade: 0, estoqueMinimo: null, minimoAutomatico: null,
+  id: 1, nome: 'Produto', setorFilhoId: 1, quantidade: 0, estoqueMaximo: null, maximoAutomatico: null,
   minimo: null, meio: null, maximo: null, precoCusto: 10, precoVenda: 20, margemLucro: 100,
   giroDiario: null, baseGiro: null, diasSemEstoque: 0, diasDeEstoque: null, diasAteMinimo: null,
-  sugestaoCompra: 0, excedente: 0, coluna: 'OK', prioridade: 0, parado: false,
-  ultimaMovimentacao: null, ultimaCompra: null, ...over,
+  sugestaoCompra: 0, excedente: 0, coluna: 'OK', prioridade: 0,
+  ultimaMovimentacao: null, ultimaCompra: null, ultimaVenda: null, diasSemVender: null, encalhado: false,
+  diasZeradoRecente: 0, vendaPerdida: 0, valorVendaPerdida: 0,
+  vendidoRecente: 0, diasComEstoqueRecente: 14, giroRecente: 0, giroAnterior: null, tendencia: null, ...over,
 });
 
-describe('parseQuantidadeMinima', () => {
+describe('parseQuantidadeMaxima', () => {
   it('le numero, decimal com virgula, milhar e vazio (= automatico)', () => {
-    expect(parseQuantidadeMinima('10')).toEqual({ ok: true, valor: 10 });
-    expect(parseQuantidadeMinima(' 2,5 ')).toEqual({ ok: true, valor: 2.5 });
-    expect(parseQuantidadeMinima('1.500')).toEqual({ ok: true, valor: 1500 });
-    expect(parseQuantidadeMinima('2.5')).toEqual({ ok: true, valor: 2.5 });
-    expect(parseQuantidadeMinima('0')).toEqual({ ok: true, valor: 0 });
-    expect(parseQuantidadeMinima('')).toEqual({ ok: true, valor: null });
+    expect(parseQuantidadeMaxima('10')).toEqual({ ok: true, valor: 10 });
+    expect(parseQuantidadeMaxima(' 2,5 ')).toEqual({ ok: true, valor: 2.5 });
+    expect(parseQuantidadeMaxima('1.500')).toEqual({ ok: true, valor: 1500 });
+    expect(parseQuantidadeMaxima('2.5')).toEqual({ ok: true, valor: 2.5 });
+    expect(parseQuantidadeMaxima('0')).toEqual({ ok: true, valor: 0 });
+    expect(parseQuantidadeMaxima('')).toEqual({ ok: true, valor: null });
   });
 
   it('recusa negativo, texto e valor absurdo', () => {
-    expect(parseQuantidadeMinima('-1').ok).toBeFalse();
-    expect(parseQuantidadeMinima('abc').ok).toBeFalse();
-    expect(parseQuantidadeMinima('2000000').ok).toBeFalse();
+    expect(parseQuantidadeMaxima('-1').ok).toBeFalse();
+    expect(parseQuantidadeMaxima('abc').ok).toBeFalse();
+    expect(parseQuantidadeMaxima('2000000').ok).toBeFalse();
   });
 });
 
-describe('textos do estoque minimo', () => {
+describe('textos do estoque maximo', () => {
   it('ritmo na unidade que da numero de gente', () => {
     expect(textoRitmo(3)).toBe('~3/dia');
     expect(textoRitmo(0.5)).toBe('~3,5/semana');
@@ -53,19 +59,21 @@ describe('textos do estoque minimo', () => {
   });
 
   it('de onde saiu a media e os dias zerados que ficaram de fora', () => {
-    expect(textoBaseGiro(item({ baseGiro: 'RECENTE', diasSemEstoque: 12 })))
-      .toBe('Média de 3 meses, com peso maior no último mês · sem contar 12 dias sem estoque');
-    expect(textoBaseGiro(item({ baseGiro: 'SEMESTRE', diasSemEstoque: 1 }))).toBe('Média de 6 meses (vende pouco) · sem contar 1 dia sem estoque');
+    expect(textoBaseGiro(item({ baseGiro: 'TRIMESTRE', diasSemEstoque: 12 })))
+      .toBe('Média de vendas dos últimos 3 meses · sem contar 12 dias sem estoque');
+    expect(textoBaseGiro(item({ baseGiro: 'SEMESTRE', diasSemEstoque: 1 }))).toBe('Média de 6 meses (poucas vendas nos últimos 3 meses) · sem contar 1 dia sem estoque');
     expect(textoBaseGiro(item({ baseGiro: null }))).toBe('');
   });
 
   it('campo vazio mostra o automatico; a dica explica automatico, fixado e sem vendas', () => {
-    expect(placeholderMinimo(item({ minimoAutomatico: 21 }))).toBe('21');
-    expect(placeholderMinimo(item({}))).toBe('—');
-    expect(dicaMinimo(item({ minimoAutomatico: 21, giroDiario: 3 }))).toContain('Automático: 21');
-    expect(dicaMinimo(item({ estoqueMinimo: 5, minimoAutomatico: 21 }))).toContain('o automático seria 21');
-    expect(dicaMinimo(item({ estoqueMinimo: 0 }))).toContain('Não acompanhado');
-    expect(dicaMinimo(item({}))).toContain('Sem vendas nos últimos 6 meses');
+    expect(placeholderMaximo(item({ maximoAutomatico: 84 }))).toBe('84');
+    expect(placeholderMaximo(item({}))).toBe('—');
+    expect(dicaMaximo(item({ maximoAutomatico: 84, giroDiario: 3, minimo: 21, meio: 42 })))
+      .toContain('Automático: 84 (4 semanas de venda; vende ~3/dia). Mínimo 21, meio 42.');
+    expect(dicaMaximo(item({ estoqueMaximo: 10, maximoAutomatico: 84, minimo: 3, meio: 5 })))
+      .toBe('Máximo fixado por você. Mínimo 3, meio 5. Pelas vendas, o automático seria 84. Apague para voltar ao automático.');
+    expect(dicaMaximo(item({ estoqueMaximo: 0 }))).toContain('Não acompanhado');
+    expect(dicaMaximo(item({}))).toContain('Sem vendas nos últimos 6 meses');
   });
 
   it('ha quanto tempo', () => {
@@ -80,25 +88,34 @@ describe('textos do estoque minimo', () => {
 describe('ReposicaoKanbanDialogComponent', () => {
   let c: ReposicaoKanbanDialogComponent;
   let produtos: jasmine.SpyObj<ProdutoService>;
+  let curvaAbc: { dias: number; ultimos90Dias: jasmine.Spy };
+  let router: { navigate: jasmine.Spy };
   let ref: { close: jasmine.Spy };
 
-  const quadro = (itens: ReposicaoItemDto[]): ReposicaoDto => ({ diasMinimo: 7, diasMeio: 14, diasMaximo: 28, itens });
+  const quadro = (itens: ReposicaoItemDto[]): ReposicaoDto => ({
+    diasMinimo: 7, diasMeio: 14, diasMaximo: 28, diasVendaPerdida: 30, diasEncalhado: 60, diasTendencia: 14, itens,
+  });
 
-  /** Simula o operador digitando no campo do minimo e saindo dele. */
-  function digitarMinimo(alvo: ReposicaoItemDto, texto: string) {
+  /** Simula o operador digitando no campo do maximo e saindo dele. */
+  function digitarMaximo(alvo: ReposicaoItemDto, texto: string) {
     const input = document.createElement('input');
     input.value = texto;
-    c.salvarMinimo(alvo, { target: input } as any);
+    c.salvarMaximo(alvo, { target: input } as any);
     return input;
   }
 
   beforeEach(() => {
-    produtos = jasmine.createSpyObj<ProdutoService>('ProdutoService', ['listarReposicao', 'definirEstoqueMinimo']);
+    produtos = jasmine.createSpyObj<ProdutoService>('ProdutoService', ['listarReposicao', 'definirEstoqueMaximo']);
+    curvaAbc = { dias: 90, ultimos90Dias: jasmine.createSpy('ultimos90Dias').and.returnValue(of(new Map<number, ClasseAbc>())) };
+    router = { navigate: jasmine.createSpy('navigate') };
     ref = { close: jasmine.createSpy('close') };
     TestBed.configureTestingModule({
       imports: [ReposicaoKanbanDialogComponent],
       providers: [
         { provide: ProdutoService, useValue: produtos },
+        { provide: CurvaAbcService, useValue: curvaAbc },
+        { provide: AuthStorageService, useValue: { lojaId: 3 } },
+        { provide: Router, useValue: router },
         { provide: MatDialogRef, useValue: ref },
       ],
     });
@@ -143,63 +160,63 @@ describe('ReposicaoKanbanDialogComponent', () => {
     expect(c.valorExcessoTotal).toBe(250);
   });
 
-  it('salva o minimo, recalcula o quadro e avisa quem abriu ao fechar', () => {
-    const meia = item({ id: 2, nome: 'Meia', quantidade: 3, coluna: 'ATENCAO', minimoAutomatico: 2 });
+  it('salva o maximo, recalcula o quadro e avisa quem abriu ao fechar', () => {
+    const meia = item({ id: 2, nome: 'Meia', quantidade: 3, coluna: 'ATENCAO', maximoAutomatico: 8 });
     produtos.listarReposicao.and.returnValues(
       of(quadro([meia])),
-      of(quadro([{ ...meia, estoqueMinimo: 10, minimo: 10, coluna: 'REPOR', prioridade: 42 }])),
+      of(quadro([{ ...meia, estoqueMaximo: 40, minimo: 10, meio: 20, maximo: 40, coluna: 'REPOR', prioridade: 42 }])),
     );
-    produtos.definirEstoqueMinimo.and.returnValue(of(undefined));
+    produtos.definirEstoqueMaximo.and.returnValue(of(undefined));
     c.ngOnInit();
 
-    digitarMinimo(meia, '10');
+    digitarMaximo(meia, '40');
 
-    expect(produtos.definirEstoqueMinimo).toHaveBeenCalledOnceWith(2, 10);
-    expect(c.itensDa('REPOR').map(i => i.estoqueMinimo)).toEqual([10]);
+    expect(produtos.definirEstoqueMaximo).toHaveBeenCalledOnceWith(2, 40);
+    expect(c.itensDa('REPOR').map(i => i.estoqueMaximo)).toEqual([40]);
     c.fechar();
     expect(ref.close).toHaveBeenCalledWith(true);
   });
 
   it('nao envia nada para o mesmo valor, Esc ou texto invalido', () => {
-    const meia = item({ id: 2, estoqueMinimo: 10, coluna: 'REPOR' });
+    const meia = item({ id: 2, estoqueMaximo: 10, coluna: 'REPOR' });
     produtos.listarReposicao.and.returnValue(of(quadro([meia])));
     c.ngOnInit();
 
-    digitarMinimo(meia, '10');
+    digitarMaximo(meia, '10');
     const input = document.createElement('input');
     input.value = '99';
-    c.cancelarMinimo(meia, { target: input } as any);
-    c.salvarMinimo(meia, { target: input } as any);
+    c.cancelarMaximo(meia, { target: input } as any);
+    c.salvarMaximo(meia, { target: input } as any);
     expect(input.value).toBe('10');
-    digitarMinimo(meia, 'abc');
+    digitarMaximo(meia, 'abc');
 
-    expect(produtos.definirEstoqueMinimo).not.toHaveBeenCalled();
-    expect(c.errosMinimo.get(2)).toContain('número');
+    expect(produtos.definirEstoqueMaximo).not.toHaveBeenCalled();
+    expect(c.errosMaximo.get(2)).toContain('número');
     c.fechar();
     expect(ref.close).toHaveBeenCalledWith(false);
   });
 
-  it('campo vazio volta ao minimo automatico', () => {
-    const meia = item({ id: 2, estoqueMinimo: 10, coluna: 'REPOR' });
+  it('campo vazio volta ao maximo automatico', () => {
+    const meia = item({ id: 2, estoqueMaximo: 10, coluna: 'REPOR' });
     produtos.listarReposicao.and.returnValue(of(quadro([meia])));
-    produtos.definirEstoqueMinimo.and.returnValue(of(undefined));
+    produtos.definirEstoqueMaximo.and.returnValue(of(undefined));
     c.ngOnInit();
 
-    digitarMinimo(meia, '');
+    digitarMaximo(meia, '');
 
-    expect(produtos.definirEstoqueMinimo).toHaveBeenCalledOnceWith(2, null);
+    expect(produtos.definirEstoqueMaximo).toHaveBeenCalledOnceWith(2, null);
   });
 
   it('mostra aviso de permissao e volta o valor quando o servidor recusa', () => {
     spyOn(console, 'error');
-    const meia = item({ id: 2, estoqueMinimo: 10, coluna: 'REPOR' });
+    const meia = item({ id: 2, estoqueMaximo: 10, coluna: 'REPOR' });
     produtos.listarReposicao.and.returnValue(of(quadro([meia])));
-    produtos.definirEstoqueMinimo.and.returnValue(throwError(() => ({ status: 403 })));
+    produtos.definirEstoqueMaximo.and.returnValue(throwError(() => ({ status: 403 })));
     c.ngOnInit();
 
-    const input = digitarMinimo(meia, '4');
+    const input = digitarMaximo(meia, '4');
 
-    expect(c.errosMinimo.get(2)).toContain('permissão');
+    expect(c.errosMaximo.get(2)).toContain('permissão');
     expect(input.value).toBe('10');
     expect(c.salvando.has(2)).toBeFalse();
   });
@@ -235,13 +252,69 @@ describe('ReposicaoKanbanDialogComponent', () => {
     expect(c.larguraBarra(item({ quantidade: 5, maximo: null }))).toBe(0);
   });
 
-  it('rodape: base da media, automatico quando o minimo foi fixado e ultima compra', () => {
+  it('rodape: base da media, automatico quando o maximo foi fixado e ultima compra', () => {
     produtos.listarReposicao.and.returnValue(of(quadro([])));
     c.ngOnInit();
 
-    expect(c.textoRodape(item({ baseGiro: 'TRIMESTRE', estoqueMinimo: 5, minimoAutomatico: 21 })))
-      .toBe('Média de 3 meses (pouca venda no último mês) · mínimo automático seria 21');
+    expect(c.textoRodape(item({ baseGiro: 'TRIMESTRE', estoqueMaximo: 10, maximoAutomatico: 84 })))
+      .toBe('Média de vendas dos últimos 3 meses · máximo automático seria 84');
     expect(c.textoRodape(item({ ultimaCompra: new Date().toISOString() }))).toBe('última compra hoje');
     expect(c.textoRodape(item({}))).toBe('');
+  });
+
+  it('selo da curva ABC dos ultimos 90 dias; sem as vendas do PDV o quadro funciona sem selo', () => {
+    curvaAbc.ultimos90Dias.and.returnValue(of(new Map<number, ClasseAbc>([[1, 'A'], [2, 'C']])));
+    produtos.listarReposicao.and.returnValue(of(quadro([])));
+    c.ngOnInit();
+
+    expect(c.classe(item({ id: 1 }))).toBe('A');
+    expect(c.classe(item({ id: 2 }))).toBe('C');
+    expect(c.classe(item({ id: 9 }))).toBeNull();          // nao vendeu nos 90 dias
+    expect(c.dicaClasse('A')).toContain('80% do faturamento');
+
+    curvaAbc.ultimos90Dias.and.returnValue(throwError(() => ({ status: 500 })));
+    c.ngOnInit();
+    expect(c.classe(item({ id: 1 }))).toBeNull();
+  });
+
+  it('explica a venda perdida do cartao', () => {
+    produtos.listarReposicao.and.returnValue(of(quadro([])));
+    c.ngOnInit();
+
+    expect(c.dicaPerdida(item({ diasZeradoRecente: 12, giroDiario: 0.5, vendaPerdida: 6 })))
+      .toBe('Ficou 12 dias sem estoque; vendendo ~3,5/semana, deixou de vender ~6 un. (estimativa pelo preço de venda).');
+  });
+
+  it('mudanca brusca no cartao e quantos dos em dia estao em alta', () => {
+    produtos.listarReposicao.and.returnValue(of(quadro([
+      item({ id: 1, nome: 'Pistola', coluna: 'ATENCAO', tendencia: 'ALTA', quantidade: 1, vendidoRecente: 7, giroRecente: 0.5, giroAnterior: 0.033 }),
+      item({ id: 2, nome: 'Chiclets', coluna: 'EXCESSO', tendencia: 'QUEDA', quantidade: 62, giroAnterior: 0.811 }),
+      item({ id: 3, nome: 'Bermuda', coluna: 'OK', tendencia: 'ALTA' }),
+      item({ id: 4, nome: 'Meia', coluna: 'OK' }),
+    ])));
+    const fixture = TestBed.createComponent(ReposicaoKanbanDialogComponent);
+    fixture.detectChanges();
+    const tela = fixture.nativeElement as HTMLElement;
+    const quadroTela = fixture.componentInstance;
+
+    expect(quadroTela.totalOk).toBe(2);
+    expect(quadroTela.totalOkEmAlta).toBe(1);
+    expect(tela.querySelector('.resumo')!.textContent).toContain('(1 em alta)');
+    expect([...tela.querySelectorAll('.cartao .tendencia')].map(e => e.textContent!.trim())).toEqual([
+      '↑ Em alta: vendeu 7 em 14 dias (antes ~1/mês)',
+      '↓ Em queda: não vendeu nos últimos 14 dias (esperado ~11)',
+    ]);
+    expect(tela.querySelector('.cartao .tendencia')!.getAttribute('title')).toContain('acaba em ~2 dias nesse ritmo');
+    fixture.destroy();
+  });
+
+  it('montar lista de compra fecha o quadro e abre a lista da loja', () => {
+    produtos.listarReposicao.and.returnValue(of(quadro([])));
+    c.ngOnInit();
+
+    c.abrirListaCompra();
+
+    expect(ref.close).toHaveBeenCalledWith(false);
+    expect(router.navigate).toHaveBeenCalledWith(['/loja', 3, 'relatorios', 'lista-de-compra']);
   });
 });

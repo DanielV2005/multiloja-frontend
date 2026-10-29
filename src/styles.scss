@@ -203,5 +203,12 @@ input[type="number"]::-webkit-outer-spin-button{
   margin: 0;
 }
 
+/* Impressao (ex.: lista de compra): papel branco, sem o botao de tema */
+@media print{
+  body{ background: #fff !important; color: #000 !important; }
+  .theme-toggle{ display: none !important; }
+}
+@page{ margin: 12mm; }
+
 
 

@@ -27,8 +27,19 @@ type EChartsOption = echarts.ComposeOption<
 
 import { UsuarioService, Loja } from '../../core/services/usuario.service';
 import { PdvService, SaleDetailsDto, SaleItemSummaryDto, SaleListItemDto, SalesSeriesPointDto } from '../../core/services/pdv.service';
-import { Produto, ProdutoService, ReposicaoItemDto } from '../../core/services/produto.service';
+import { AjustesSaidaDto, Produto, ProdutoService, ReposicaoItemDto } from '../../core/services/produto.service';
 import { ReposicaoKanbanDialogComponent } from './estoque/reposicao-kanban.dialog';
+import {
+  AlertDialogItem,
+  AlertaAjustes,
+  AlertaEncalhados,
+  AlertaTendencia,
+  AlertaVendaPerdida,
+  alertaAjustes,
+  alertaEncalhados,
+  alertaTendencia,
+  alertaVendaPerdida,
+} from './painel-alertas';
 import { Setor, SetorService } from '../../core/services/setor.service';
 import { FuncionarioFormDialogComponent } from './funcionarios/funcionario-form.dialog';
 import { SetoresDialogComponent } from './setores/setores-dialog';
@@ -135,6 +146,14 @@ import { formatBRL, formatDecimal } from '../../shared/format';
             <button class="action-btn" type="button" (click)="irParaRelatorioVendas()">
               <span class="material-symbols-outlined">receipt</span>
               <span>Vendas</span>
+            </button>
+            <button class="action-btn" type="button" (click)="irParaRelatorio('mais-vendidos')">
+              <span class="material-symbols-outlined">trending_up</span>
+              <span>Mais vendidos</span>
+            </button>
+            <button class="action-btn" type="button" (click)="irParaRelatorio('lista-de-compra')">
+              <span class="material-symbols-outlined">shopping_cart</span>
+              <span>Lista de compra</span>
             </button>
           </div>
         </div>
@@ -244,9 +263,25 @@ import { formatBRL, formatDecimal } from '../../shared/format';
                     <span class="dot" [class.warn]="lowStockAlerts.length > 0" [class.neutral]="lowStockAlerts.length === 0"></span>
                     <span>Produtos com estoque baixo<span class="muted" *ngIf="lowStockAlerts.length"> ({{ lowStockAlerts.length }})</span></span>
                   </button>
-                  <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('staleProducts')">
-                    <span class="dot" [class.warn]="staleProductAlerts.length > 0" [class.neutral]="staleProductAlerts.length === 0"></span>
-                    <span>Produtos parados (30+ dias)<span class="muted" *ngIf="staleProductAlerts.length"> ({{ staleProductAlerts.length }})</span></span>
+                  <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('lostSales')">
+                    <span class="dot" [class.warn]="lostSales.itens.length > 0" [class.neutral]="lostSales.itens.length === 0"></span>
+                    <span>Venda perdida por falta de estoque (30 dias)<span class="muted" *ngIf="lostSales.itens.length"> · ~{{ formatMoney(lostSales.valor) }}</span></span>
+                  </button>
+                  <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('salesTrend')">
+                    <span class="dot" [class.warn]="salesTrend.itens.length > 0" [class.neutral]="salesTrend.itens.length === 0"></span>
+                    <span>Mudança brusca nas vendas ({{ trendDays }} dias)<span class="muted" *ngIf="salesTrend.itens.length"> ({{ trendSummary }})</span></span>
+                  </button>
+                  <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('stuckProducts')">
+                    <span class="dot" [class.warn]="stuckProducts.itens.length > 0" [class.neutral]="stuckProducts.itens.length === 0"></span>
+                    <span>Produtos encalhados ({{ stuckDays }}+ dias sem vender)<span class="muted" *ngIf="stuckProducts.itens.length"> ({{ stuckProducts.itens.length }} · {{ formatMoney(stuckProducts.valorCusto) }})</span></span>
+                  </button>
+                  <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('stockAdjustments')">
+                    <span class="dot" [class.warn]="(adjustments?.conferir ?? 0) > 0" [class.neutral]="!adjustments?.conferir"></span>
+                    <span>
+                      Saídas por ajuste para conferir
+                      <span class="muted" *ngIf="adjustments?.conferir"> ({{ adjustments?.conferir }})</span>
+                      <span class="muted" *ngIf="adjustmentsError"> · não carregou</span>
+                    </span>
                   </button>
                   <button type="button" class="alert-row alert-row--button" (click)="openAlertDialog('lowMargin')">
                     <span class="dot" [class.warn]="lowMarginAlerts.length > 0" [class.neutral]="lowMarginAlerts.length === 0"></span>
@@ -952,7 +987,6 @@ import { formatBRL, formatDecimal } from '../../shared/format';
 })
 export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly lowMarginThreshold = 30;
-  private readonly staleDaysThreshold = 30;
   private route = inject(ActivatedRoute);
   private api = inject(UsuarioService);
   private pdv = inject(PdvService);
@@ -1024,8 +1058,15 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   salesLoading = false;
   salesError = '';
   lowStockAlerts: AlertDialogItem[] = [];
-  staleProductAlerts: AlertDialogItem[] = [];
+  lostSales: AlertaVendaPerdida = { itens: [], valor: 0, unidades: 0 };
+  salesTrend: AlertaTendencia = { itens: [], alta: 0, queda: 0 };
+  trendDays = 14;
+  stuckProducts: AlertaEncalhados = { itens: [], valorCusto: 0 };
+  stuckDays = 60;
   lowMarginAlerts: AlertDialogItem[] = [];
+  // Saidas por ajuste vem de outra consulta: se falhar, so essa linha avisa
+  adjustments: (AlertaAjustes & { dto: AjustesSaidaDto }) | null = null;
+  adjustmentsError = false;
   // Alertas carregam a parte do resumo de estoque: uma falha aqui aparece como aviso, nao como "0 ativos"
   alertsLoading = true;
   alertsError = false;
@@ -1036,7 +1077,22 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   menuRelatoriosAberto = false;
 
   get activeAlertCount(): number {
-    return [this.lowStockAlerts, this.staleProductAlerts, this.lowMarginAlerts].filter((list) => list.length > 0).length;
+    return [
+      this.lowStockAlerts.length,
+      this.lostSales.itens.length,
+      this.salesTrend.itens.length,
+      this.stuckProducts.itens.length,
+      this.adjustments?.conferir ?? 0,
+      this.lowMarginAlerts.length,
+    ].filter((n) => n > 0).length;
+  }
+
+  /** "2 em alta · 1 em queda" (so as partes que tem). */
+  get trendSummary(): string {
+    return [
+      this.salesTrend.alta ? `${this.salesTrend.alta} em alta` : '',
+      this.salesTrend.queda ? `${this.salesTrend.queda} em queda` : '',
+    ].filter(Boolean).join(' · ');
   }
 
   ngOnInit(): void {
@@ -1192,6 +1248,12 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
     this.menuRelatoriosAberto = false;
     if (!this.lojaId) return;
     this.router.navigate(['/loja', this.lojaId, 'relatorios', 'vendas']);
+  }
+
+  irParaRelatorio(relatorio: 'mais-vendidos' | 'lista-de-compra'): void {
+    this.menuRelatoriosAberto = false;
+    if (!this.lojaId) return;
+    this.router.navigate(['/loja', this.lojaId, 'relatorios', relatorio]);
   }
 
   private loadSalesChart(): void {
@@ -2439,19 +2501,22 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
-   * Os tres alertas vem de uma consulta so do Catalogo (produtos ativos com minimo, giro e ultima movimentacao),
-   * calculada no servidor. Antes o "parados" pedia os movimentos do periodo e o servidor cortava em 200.
+   * Estoque baixo, venda perdida, encalhados e margens vem de uma consulta so do Catalogo (o quadro de reposicao,
+   * calculado no servidor). As saidas por ajuste vem de outra, que falha sozinha sem apagar os demais alertas.
    */
   loadAlerts(): void {
     const token = ++this.alertsToken;
     this.alertsLoading = true;
     this.alertsError = false;
+    this.adjustmentsError = false;
     this.produtos
       .listarReposicao()
       .pipe(timeout(20000), takeUntil(this.destroy$))
       .subscribe({
         next: (dados) => {
           if (token !== this.alertsToken) return;
+          this.stuckDays = dados.diasEncalhado ?? this.stuckDays;
+          this.trendDays = dados.diasTendencia ?? this.trendDays;
           this.applyAlertData(dados.itens ?? []);
           this.alertsLoading = false;
         },
@@ -2459,10 +2524,27 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
           if (token !== this.alertsToken) return;
           console.error('[Painel] erro ao carregar alertas', err);
           this.lowStockAlerts = [];
-          this.staleProductAlerts = [];
+          this.lostSales = { itens: [], valor: 0, unidades: 0 };
+          this.salesTrend = { itens: [], alta: 0, queda: 0 };
+          this.stuckProducts = { itens: [], valorCusto: 0 };
           this.lowMarginAlerts = [];
           this.alertsLoading = false;
           this.alertsError = true;
+        },
+      });
+    this.produtos
+      .listarAjustesSaida()
+      .pipe(timeout(20000), takeUntil(this.destroy$))
+      .subscribe({
+        next: (dto) => {
+          if (token !== this.alertsToken) return;
+          this.adjustments = { ...alertaAjustes(dto), dto };
+        },
+        error: (err) => {
+          if (token !== this.alertsToken) return;
+          console.error('[Painel] erro ao carregar saidas por ajuste', err);
+          this.adjustments = null;
+          this.adjustmentsError = true;
         },
       });
   }
@@ -2481,16 +2563,9 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
         value: `Comprar ${formatDecimal(i.sugestaoCompra, 0, 3)}`,
       }));
 
-    this.staleProductAlerts = itens
-      .filter((i) => i.parado)
-      .sort(porNome)
-      .map((i) => ({
-        name: i.nome,
-        detail: i.ultimaMovimentacao
-          ? `Última movimentação em ${new Date(i.ultimaMovimentacao).toLocaleDateString('pt-BR')}.`
-          : `Sem movimentação registrada.`,
-        value: `Qtd: ${formatDecimal(i.quantidade, 0, 3)}`,
-      }));
+    this.lostSales = alertaVendaPerdida(itens);
+    this.salesTrend = alertaTendencia(itens, this.trendDays);
+    this.stuckProducts = alertaEncalhados(itens);
 
     // Sem preco de custo a margem fica 0: nao e margem baixa, e cadastro incompleto
     this.lowMarginAlerts = itens
@@ -2532,13 +2607,65 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
           items: this.lowStockAlerts,
           emptyMessage: 'Nenhum produto com estoque baixo no momento.',
         };
-      case 'staleProducts':
+      case 'lostSales':
         return {
-          title: 'Produtos parados',
-          description: `Produtos sem movimentação registrada nos últimos ${this.staleDaysThreshold} dias.`,
-          items: this.staleProductAlerts,
-          emptyMessage: 'Nenhum produto parado no período analisado.',
+          title: 'Venda perdida por falta de estoque',
+          description:
+            'Estimativa dos últimos 30 dias: quanto cada produto vende por dia (média dos dias em que tinha estoque) ' +
+            'vezes os dias em que ficou zerado, pelo preço de venda. Só entra quem vendeu pelo menos 3 no período da média.',
+          summary: this.lostSales.itens.length
+            ? `Total: ~${this.formatMoney(this.lostSales.valor)} (${formatDecimal(this.lostSales.unidades, 0, 1)} unidades).`
+            : '',
+          footnote: 'Produto que não vai mais repor (fim de estação, saiu de linha)? Coloque máximo 0 no quadro de reposição e ele sai daqui.',
+          items: this.lostSales.itens,
+          emptyMessage: 'Nenhuma venda perdida por falta de estoque nos últimos 30 dias.',
         };
+      case 'salesTrend':
+        return {
+          title: 'Mudança brusca nas vendas',
+          description:
+            `Vendas dos últimos ${this.trendDays} dias comparadas com as dos 3 meses anteriores, contando só os dias em que ` +
+            'o produto tinha estoque. Em alta: vendeu 5 ou mais (em pelo menos 3 vendas), no dobro do ritmo ou mais. ' +
+            'Em queda: tinha estoque e vendeu um terço ou menos do esperado.',
+          summary: this.salesTrend.itens.length ? `${this.trendSummary}.` : '',
+          footnote:
+            'Em alta: a compra sugerida no quadro ainda usa a média de 3 meses e pode ser pouca. ' +
+            'Em queda: confira preço, exposição e se a venda está sendo lançada no produto certo antes de comprar mais. ' +
+            'Produto zerado não entra: sem estoque não dá para medir a procura.',
+          items: this.salesTrend.itens,
+          emptyMessage: `Nenhuma mudança brusca nas vendas dos últimos ${this.trendDays} dias.`,
+        };
+      case 'stuckProducts':
+        return {
+          title: 'Produtos encalhados',
+          description:
+            `Com estoque e sem vender há ${this.stuckDays} dias ou mais (só contam os dias em que havia estoque). ` +
+            'O valor é o custo do que está parado na prateleira, do maior para o menor.',
+          summary: this.stuckProducts.itens.length
+            ? `${this.stuckProducts.itens.length} produtos · ${this.formatMoney(this.stuckProducts.valorCusto)} parados pelo custo.`
+            : '',
+          footnote: 'Bons candidatos a promoção, kit ou troca com o fornecedor.',
+          items: this.stuckProducts.itens,
+          emptyMessage: `Nenhum produto com estoque parado há ${this.stuckDays} dias ou mais.`,
+        };
+      case 'stockAdjustments': {
+        const dto = this.adjustments?.dto;
+        return {
+          title: 'Saídas por ajuste',
+          description:
+            `Mercadoria que saiu do estoque por "Ajuste" nos últimos ${dto?.dias ?? 90} dias, sem venda registrada: ` +
+            `pode ser perda, furto ou erro de contagem. Para conferir: saída de ${this.formatMoney(dto?.valorGrande ?? 50)} ` +
+            'ou mais pelo custo, ou o mesmo produto em 2 dias diferentes.',
+          summary: dto && dto.produtos.length
+            ? `${dto.produtos.length} produtos · ${formatDecimal(dto.quantidade, 0, 3)} unidades · ${this.formatMoney(dto.valor)} pelo custo.`
+            : '',
+          footnote: 'Ajuste logo depois de uma entrada do mesmo produto (até 30 min) é tratado como correção de digitação e não conta.',
+          items: this.adjustments?.itens ?? [],
+          emptyMessage: this.adjustmentsError
+            ? 'Não foi possível carregar as saídas por ajuste.'
+            : 'Nenhuma saída por ajuste no período.',
+        };
+      }
       case 'lowMargin':
       default:
         return {
@@ -2601,17 +2728,15 @@ export class PainelLojaComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 }
 
-interface AlertDialogItem {
-  name: string;
-  detail: string;
-  value?: string;
-}
-
-type DashboardAlertKind = 'lowStock' | 'staleProducts' | 'lowMargin';
+type DashboardAlertKind = 'lowStock' | 'lostSales' | 'salesTrend' | 'stuckProducts' | 'stockAdjustments' | 'lowMargin';
 
 interface PainelAlertDialogData {
   title: string;
   description: string;
+  /** Totais, em destaque abaixo da descricao. */
+  summary?: string;
+  /** Dica no pe da lista. */
+  footnote?: string;
   items: AlertDialogItem[];
   emptyMessage: string;
 }
@@ -2626,6 +2751,7 @@ interface PainelAlertDialogData {
         <div>
           <h3>{{ data.title }}</h3>
           <p>{{ data.description }}</p>
+          <p class="dialog__summary" *ngIf="data.summary">{{ data.summary }}</p>
         </div>
         <button type="button" class="ghost" (click)="close()">Fechar</button>
       </div>
@@ -2633,7 +2759,12 @@ interface PainelAlertDialogData {
       <div class="dialog__content" *ngIf="data.items.length; else emptyState">
         <article class="dialog__item" *ngFor="let item of data.items">
           <div class="dialog__item-main">
-            <strong>{{ item.name }}</strong>
+            <strong>{{ item.name }} <span
+              class="dialog__tag"
+              *ngIf="item.tag"
+              [class.dialog__tag--up]="item.tagTone === 'up'"
+              [class.dialog__tag--down]="item.tagTone === 'down'"
+            >{{ item.tag }}</span></strong>
             <span>{{ item.detail }}</span>
           </div>
           <span class="dialog__item-value" *ngIf="item.value">{{ item.value }}</span>
@@ -2643,6 +2774,8 @@ interface PainelAlertDialogData {
       <ng-template #emptyState>
         <div class="dialog__empty">{{ data.emptyMessage }}</div>
       </ng-template>
+
+      <p class="dialog__footnote" *ngIf="data.footnote && data.items.length">{{ data.footnote }}</p>
     </section>
   `,
   styles: [`
@@ -2673,6 +2806,43 @@ interface PainelAlertDialogData {
       margin: 0;
       color: rgba(226, 232, 240, 0.76);
       line-height: 1.45;
+    }
+
+    .dialog__header .dialog__summary {
+      margin-top: 8px;
+      color: #f8e28a;
+      font-weight: 600;
+    }
+
+    /* Dentro do item: mais especifico que ".dialog__item-main span" (texto cinza do detalhe) */
+    .dialog__item-main .dialog__tag {
+      margin-left: 6px;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      vertical-align: middle;
+      color: #fecaca;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+    }
+
+    .dialog__item-main .dialog__tag--up {
+      color: #bbf7d0;
+      background: rgba(34, 197, 94, 0.18);
+      border-color: rgba(34, 197, 94, 0.45);
+    }
+
+    .dialog__item-main .dialog__tag--down {
+      color: #fde68a;
+      background: rgba(234, 179, 8, 0.18);
+      border-color: rgba(234, 179, 8, 0.45);
+    }
+
+    .dialog__footnote {
+      margin: 14px 0 0;
+      font-size: 0.85rem;
+      color: rgba(226, 232, 240, 0.62);
     }
 
     .ghost {

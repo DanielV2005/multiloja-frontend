@@ -1,6 +1,7 @@
 // src/app/features/loja/estoque/reposicao-kanban.dialog.ts
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 
 import {
@@ -9,17 +10,21 @@ import {
   ReposicaoDto,
   ReposicaoItemDto,
 } from '../../../core/services/produto.service';
+import { AuthStorageService } from '../../../core/services/auth-storage.service';
+import { CurvaAbcService } from '../../../core/services/curva-abc.service';
+import { ClasseAbc, textoClasseAbc } from '../../../shared/curva-abc';
 import { formatBRL } from '../../../shared/format';
 import {
-  dicaMinimo,
+  dicaMaximo,
   fmtQuantidade,
-  parseQuantidadeMinima,
-  placeholderMinimo,
+  parseQuantidadeMaxima,
+  placeholderMaximo,
   textoBaseGiro,
   textoDuracao,
   textoHaQuanto,
   textoRitmo,
-} from './estoque-minimo';
+} from './estoque-maximo';
+import { detalheTendencia, resumoTendencia } from './tendencia';
 
 interface ColunaQuadro {
   id: ReposicaoColuna;
@@ -28,10 +33,11 @@ interface ColunaQuadro {
 }
 
 /**
- * Quadro de reposicao: o minimo de cada produto e automatico pelas vendas (1 semana; meio = 2, maximo = 4),
- * ou o que o usuario digitou. Cada produto cai numa coluna e, dentro dela, aparece pela prioridade de compra
- * calculada no Catalogo (no excesso, pelo dinheiro parado).
- * Fecha com `true` quando algum minimo foi alterado, para quem abriu recarregar os alertas.
+ * Quadro de reposicao: os niveis de cada produto sao automaticos pelas vendas (minimo 1 semana, meio 2, maximo 4),
+ * ou saem do maximo que o usuario digitou (minimo 1/4, meio 1/2). Cada produto cai numa coluna e, dentro dela,
+ * aparece pela prioridade de compra calculada no Catalogo (no excesso, pelo dinheiro parado).
+ * O selo A/B/C e a curva ABC dos ultimos 90 dias (vem do PDV; sem ela o quadro funciona igual).
+ * Fecha com `true` quando algum maximo foi alterado, para quem abriu recarregar os alertas.
  */
 @Component({
   standalone: true,
@@ -43,13 +49,19 @@ interface ColunaQuadro {
         <div>
           <h3>Reposição de estoque</h3>
           <p>
-            O mínimo é calculado sozinho pelas vendas: <b>mínimo</b> = {{ semanas(dados?.diasMinimo ?? 7) }} de venda,
+            Calculado sozinho pela média de vendas dos últimos 3 meses: <b>mínimo</b> = {{ semanas(dados?.diasMinimo ?? 7) }} de venda,
             <b>meio</b> = {{ semanas(dados?.diasMeio ?? 14) }}, <b>máximo</b> = {{ semanas(dados?.diasMaximo ?? 28) }}.
             Os dias em que o produto ficou sem estoque não entram na média.
-            Para fixar outro mínimo, digite no cartão; apague para voltar ao automático; 0 deixa de acompanhar.
+            Para fixar outro máximo, digite no cartão (o mínimo vira 1/4 e o meio, a metade dele);
+            apague para voltar ao automático; 0 deixa de acompanhar.
           </p>
         </div>
-        <button type="button" class="ghost" (click)="fechar()">Fechar</button>
+        <div class="acoes">
+          <button type="button" class="ghost" (click)="abrirListaCompra()" title="Filtrar, marcar e imprimir o que comprar">
+            Montar lista de compra
+          </button>
+          <button type="button" class="ghost" (click)="fechar()">Fechar</button>
+        </div>
       </header>
 
       <div class="toolbar">
@@ -62,6 +74,11 @@ interface ColunaQuadro {
         />
         <span class="muted resumo" *ngIf="dados">
           {{ totalOk }} em dia
+          <span
+            class="em-alta"
+            *ngIf="totalOkEmAlta"
+            title="Em dia pela média de 3 meses, mas vendendo o dobro ou mais nas últimas semanas (veja nos alertas do painel)"
+          >({{ totalOkEmAlta }} em alta)</span>
           <ng-container *ngIf="totalSemHistorico"> · {{ totalSemHistorico }} sem vendas para calcular</ng-container>
           <ng-container *ngIf="totalNaoMonitorado"> · {{ totalNaoMonitorado }} não acompanhados</ng-container>
         </span>
@@ -88,9 +105,12 @@ interface ColunaQuadro {
 
           <div class="coluna__vazia" *ngIf="!itensDa(col.id).length">Nenhum produto.</div>
 
-          <article class="cartao" *ngFor="let item of itensDa(col.id); trackBy: trackItem">
+          <article class="cartao" [class.cartao--a]="classe(item) === 'A'" *ngFor="let item of itensDa(col.id); trackBy: trackItem">
             <header class="cartao__topo">
-              <strong class="nome">{{ item.nome }}</strong>
+              <strong class="nome">
+                <span class="abc" *ngIf="classe(item) as c" [attr.data-classe]="c" [title]="dicaClasse(c)">{{ c }}</span>
+                {{ item.nome }}
+              </strong>
               <span
                 *ngIf="item.coluna !== 'EXCESSO'"
                 class="prioridade"
@@ -112,22 +132,22 @@ interface ColunaQuadro {
 
             <div class="linha">
               <span>Estoque <b>{{ fmtQtd(item.quantidade) }}</b></span>
-              <label class="minimo" [title]="dica(item)">
-                mín.
+              <label class="maximo" [title]="dica(item)">
+                máx.
                 <input
                   type="text"
                   inputmode="decimal"
-                  class="minimo__input"
-                  [class.minimo__input--auto]="item.estoqueMinimo == null"
-                  [value]="minimoTexto(item)"
+                  class="maximo__input"
+                  [class.maximo__input--auto]="item.estoqueMaximo == null"
+                  [value]="maximoTexto(item)"
                   [placeholder]="placeholder(item)"
                   [disabled]="salvando.has(item.id)"
                   (keydown.enter)="$any($event.target).blur()"
-                  (keydown.escape)="cancelarMinimo(item, $event)"
-                  (blur)="salvarMinimo(item, $event)"
+                  (keydown.escape)="cancelarMaximo(item, $event)"
+                  (blur)="salvarMaximo(item, $event)"
                 />
-                <small class="tag" [class.tag--fixo]="item.estoqueMinimo != null">
-                  {{ item.estoqueMinimo == null ? 'auto' : 'fixo' }}
+                <small class="tag" [class.tag--fixo]="item.estoqueMaximo != null">
+                  {{ item.estoqueMaximo == null ? 'auto' : 'fixo' }}
                 </small>
               </label>
             </div>
@@ -141,8 +161,14 @@ interface ColunaQuadro {
             </div>
 
             <div class="linha muted">{{ textoGiro(item) }}</div>
+            <div class="linha perdida" *ngIf="item.valorVendaPerdida > 0" [title]="dicaPerdida(item)">
+              Deixou de vender ~{{ fmtMoney(item.valorVendaPerdida) }} em {{ dados?.diasVendaPerdida ?? 30 }} dias
+            </div>
+            <div class="linha tendencia" *ngIf="item.tendencia" [attr.data-tendencia]="item.tendencia" [title]="dicaTendencia(item)">
+              {{ item.tendencia === 'ALTA' ? '↑' : '↓' }} {{ textoTendencia(item) }}
+            </div>
             <div class="rodape muted" *ngIf="textoRodape(item) as rodape">{{ rodape }}</div>
-            <div class="erro-minimo" *ngIf="errosMinimo.get(item.id) as msg">{{ msg }}</div>
+            <div class="erro-maximo" *ngIf="errosMaximo.get(item.id) as msg">{{ msg }}</div>
           </article>
         </section>
       </div>
@@ -163,6 +189,7 @@ interface ColunaQuadro {
       box-sizing: border-box;
     }
     .dialog__header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .acoes { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .dialog__header h3 { margin: 0 0 6px; font-size: 1.2rem; }
     .dialog__header p { margin: 0; color: rgba(226, 232, 240, 0.76); line-height: 1.45; font-size: .9rem; max-width: 820px; }
     .dialog__header b { color: #e5eefc; font-weight: 600; }
@@ -240,6 +267,26 @@ interface ColunaQuadro {
     }
     .cartao__topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
     .nome { word-break: break-word; }
+    /* Curva A (o que mais fatura): selo dourado e borda, para nao deixar faltar */
+    .cartao--a { border-left: 3px solid #d4af37; }
+    .abc {
+      display: inline-grid;
+      place-items: center;
+      min-width: 18px;
+      height: 18px;
+      margin-right: 4px;
+      border-radius: 5px;
+      font-size: .7rem;
+      font-weight: 700;
+      vertical-align: 1px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      color: rgba(226, 232, 240, 0.7);
+    }
+    .abc[data-classe="A"] { background: rgba(218, 171, 31, 0.22); border-color: #d4af37; color: #f8e28a; }
+    .perdida { color: #fca5a5; font-size: .8rem; }
+    .tendencia { font-size: .8rem; }
+    .tendencia[data-tendencia="ALTA"], .em-alta { color: #86efac; }
+    .tendencia[data-tendencia="QUEDA"] { color: #fcd34d; }
     .prioridade, .valor-parado {
       flex: none;
       min-width: 30px;
@@ -263,8 +310,8 @@ interface ColunaQuadro {
     .linha { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
     .linha.acao b { color: #f8e28a; }
     .rodape { font-size: .76rem; line-height: 1.35; }
-    .minimo { display: inline-flex; align-items: center; gap: 6px; }
-    .minimo__input {
+    .maximo { display: inline-flex; align-items: center; gap: 6px; }
+    .maximo__input {
       width: 64px;
       height: 26px;
       padding: 0 6px;
@@ -278,9 +325,9 @@ interface ColunaQuadro {
       outline: none;
     }
     /* Vazio mostra o automatico: cinza e italico, para nao parecer digitado */
-    .minimo__input::placeholder { color: rgba(226, 232, 240, 0.5); font-style: italic; }
-    .minimo__input:focus { border-color: rgba(56, 189, 248, 0.95); }
-    .minimo__input:disabled { opacity: .6; }
+    .maximo__input::placeholder { color: rgba(226, 232, 240, 0.5); font-style: italic; }
+    .maximo__input:focus { border-color: rgba(56, 189, 248, 0.95); }
+    .maximo__input:disabled { opacity: .6; }
     .tag {
       font-size: .7rem;
       padding: 1px 6px;
@@ -289,7 +336,7 @@ interface ColunaQuadro {
       color: rgba(226, 232, 240, 0.62);
     }
     .tag--fixo { border-color: rgba(240, 210, 122, 0.5); color: #f8e28a; }
-    .erro-minimo { color: #fca5a5; font-size: .8rem; }
+    .erro-maximo { color: #fca5a5; font-size: .8rem; }
 
     @media (max-width: 1000px) {
       .quadro { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -297,13 +344,16 @@ interface ColunaQuadro {
     @media (max-width: 640px) {
       .dialog { padding: 16px; border-radius: 18px; }
       .dialog__header { display: grid; }
-      .ghost { justify-self: start; }
+      .acoes { justify-content: flex-start; }
       .quadro { grid-template-columns: minmax(0, 1fr); }
     }
   `],
 })
 export class ReposicaoKanbanDialogComponent implements OnInit {
   private produtos = inject(ProdutoService);
+  private curvaAbc = inject(CurvaAbcService);
+  private auth = inject(AuthStorageService);
+  private router = inject(Router);
   private ref = inject(MatDialogRef<ReposicaoKanbanDialogComponent>);
 
   readonly colunas: ColunaQuadro[] = [
@@ -318,11 +368,13 @@ export class ReposicaoKanbanDialogComponent implements OnInit {
   dados: ReposicaoDto | null = null;
   filtro = '';
   totalOk = 0;
+  totalOkEmAlta = 0;
   totalSemHistorico = 0;
   totalNaoMonitorado = 0;
   valorExcessoTotal = 0;
   salvando = new Set<number>();
-  errosMinimo = new Map<number, string>();
+  errosMaximo = new Map<number, string>();
+  curva: Map<number, ClasseAbc> | null = null;
 
   private porColuna = new Map<ReposicaoColuna, ReposicaoItemDto[]>();
   private alterou = false;
@@ -330,6 +382,10 @@ export class ReposicaoKanbanDialogComponent implements OnInit {
 
   ngOnInit(): void {
     this.carregar();
+    this.curvaAbc.ultimos90Dias().subscribe({
+      next: curva => (this.curva = curva),
+      error: () => (this.curva = null),
+    });
   }
 
   carregar(): void {
@@ -358,61 +414,61 @@ export class ReposicaoKanbanDialogComponent implements OnInit {
     return this.porColuna.get(coluna) ?? [];
   }
 
-  minimoTexto(item: ReposicaoItemDto): string {
-    return item.estoqueMinimo == null ? '' : this.fmtQtd(item.estoqueMinimo);
+  maximoTexto(item: ReposicaoItemDto): string {
+    return item.estoqueMaximo == null ? '' : this.fmtQtd(item.estoqueMaximo);
   }
 
   placeholder(item: ReposicaoItemDto): string {
-    return placeholderMinimo(item);
+    return placeholderMaximo(item);
   }
 
   dica(item: ReposicaoItemDto): string {
-    return dicaMinimo(item);
+    return dicaMaximo(item);
   }
 
-  cancelarMinimo(item: ReposicaoItemDto, event: Event): void {
+  cancelarMaximo(item: ReposicaoItemDto, event: Event): void {
     this.cancelado = true;
     const input = event.target as HTMLInputElement;
-    input.value = this.minimoTexto(item);
+    input.value = this.maximoTexto(item);
     input.blur();
   }
 
-  salvarMinimo(item: ReposicaoItemDto, event: Event): void {
+  salvarMaximo(item: ReposicaoItemDto, event: Event): void {
     const input = event.target as HTMLInputElement;
     if (this.cancelado) {
       this.cancelado = false;
       return;
     }
-    const lido = parseQuantidadeMinima(input.value);
+    const lido = parseQuantidadeMaxima(input.value);
     if (!lido.ok) {
-      this.errosMinimo.set(item.id, lido.erro);
+      this.errosMaximo.set(item.id, lido.erro);
       return;
     }
-    this.errosMinimo.delete(item.id);
-    if (lido.valor === (item.estoqueMinimo ?? null)) return;
+    this.errosMaximo.delete(item.id);
+    if (lido.valor === (item.estoqueMaximo ?? null)) return;
 
     this.salvando.add(item.id);
-    this.produtos.definirEstoqueMinimo(item.id, lido.valor).subscribe({
+    this.produtos.definirEstoqueMaximo(item.id, lido.valor).subscribe({
       next: () => {
         this.salvando.delete(item.id);
         this.alterou = true;
-        // Coluna, niveis e prioridade dependem do minimo: recalcula no servidor
+        // Coluna, niveis e prioridade dependem do maximo: recalcula no servidor
         this.produtos.listarReposicao().subscribe({
           next: dados => {
             this.dados = dados;
             this.agrupar();
           },
           error: () => {
-            item.estoqueMinimo = lido.valor;
+            item.estoqueMaximo = lido.valor;
           },
         });
       },
       error: err => {
         this.salvando.delete(item.id);
-        input.value = this.minimoTexto(item);
-        this.errosMinimo.set(
+        input.value = this.maximoTexto(item);
+        this.errosMaximo.set(
           item.id,
-          err?.status === 403 ? 'Sem permissão para alterar o mínimo.' : 'Não foi possível salvar o mínimo.'
+          err?.status === 403 ? 'Sem permissão para alterar o máximo.' : 'Não foi possível salvar o máximo.'
         );
       },
     });
@@ -420,6 +476,33 @@ export class ReposicaoKanbanDialogComponent implements OnInit {
 
   fechar(): void {
     this.ref.close(this.alterou);
+  }
+
+  abrirListaCompra(): void {
+    const lojaId = this.auth.lojaId;
+    this.fechar();
+    if (lojaId) this.router.navigate(['/loja', lojaId, 'relatorios', 'lista-de-compra']);
+  }
+
+  classe(item: ReposicaoItemDto): ClasseAbc | null {
+    return this.curva?.get(item.id) ?? null;
+  }
+
+  dicaClasse(c: ClasseAbc): string {
+    return `${textoClasseAbc(c)} (últimos ${this.curvaAbc.dias} dias)`;
+  }
+
+  dicaPerdida(item: ReposicaoItemDto): string {
+    return `Ficou ${item.diasZeradoRecente} ${item.diasZeradoRecente === 1 ? 'dia' : 'dias'} sem estoque; ` +
+      `vendendo ${textoRitmo(item.giroDiario ?? 0)}, deixou de vender ~${this.fmtQtd(item.vendaPerdida)} un. (estimativa pelo preço de venda).`;
+  }
+
+  textoTendencia(item: ReposicaoItemDto): string {
+    return resumoTendencia(item, this.dados?.diasTendencia ?? 14);
+  }
+
+  dicaTendencia(item: ReposicaoItemDto): string {
+    return detalheTendencia(item, this.dados?.diasTendencia ?? 14);
   }
 
   /** Posicao (0 a 100%) de uma quantidade na barra, que vai de 0 ao maximo. */
@@ -459,11 +542,11 @@ export class ReposicaoKanbanDialogComponent implements OnInit {
     return vende + dura + pedir;
   }
 
-  /** Linha miuda: de onde saiu a media, o automatico (se o minimo foi fixado) e a ultima compra. */
+  /** Linha miuda: de onde saiu a media, o automatico (se o maximo foi fixado) e a ultima compra. */
   textoRodape(item: ReposicaoItemDto): string {
     const partes = [textoBaseGiro(item)];
-    if (item.estoqueMinimo != null && item.minimoAutomatico != null && item.minimoAutomatico !== item.estoqueMinimo) {
-      partes.push(`mínimo automático seria ${this.fmtQtd(item.minimoAutomatico)}`);
+    if (item.estoqueMaximo != null && item.maximoAutomatico != null && item.maximoAutomatico !== item.estoqueMaximo) {
+      partes.push(`máximo automático seria ${this.fmtQtd(item.maximoAutomatico)}`);
     }
     if (item.ultimaCompra) partes.push(`última compra ${textoHaQuanto(item.ultimaCompra)}`);
     return partes.filter(Boolean).join(' · ');
@@ -494,13 +577,16 @@ export class ReposicaoKanbanDialogComponent implements OnInit {
     const f = this.filtro.trim().toLowerCase();
     const mapa = new Map<ReposicaoColuna, ReposicaoItemDto[]>();
     let ok = 0;
+    let okEmAlta = 0;
     let semHistorico = 0;
     let naoMonitorado = 0;
     let valorExcesso = 0;
     for (const item of this.dados?.itens ?? []) {
       if (f && !item.nome.toLowerCase().includes(f) && !(item.codigoBarra ?? '').toLowerCase().includes(f)) continue;
-      if (item.coluna === 'OK') ok++;
-      else if (item.coluna === 'SEM_HISTORICO') semHistorico++;
+      if (item.coluna === 'OK') {
+        ok++;
+        if (item.tendencia === 'ALTA') okEmAlta++;
+      } else if (item.coluna === 'SEM_HISTORICO') semHistorico++;
       else if (item.coluna === 'NAO_MONITORADO') naoMonitorado++;
       else {
         const lista = mapa.get(item.coluna) ?? [];
@@ -513,6 +599,7 @@ export class ReposicaoKanbanDialogComponent implements OnInit {
     mapa.get('EXCESSO')?.sort((a, b) => this.valorExcesso(b) - this.valorExcesso(a));
     this.porColuna = mapa;
     this.totalOk = ok;
+    this.totalOkEmAlta = okEmAlta;
     this.totalSemHistorico = semHistorico;
     this.totalNaoMonitorado = naoMonitorado;
     this.valorExcessoTotal = valorExcesso;
